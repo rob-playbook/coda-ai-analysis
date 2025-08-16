@@ -6,12 +6,16 @@ import signal
 import sys
 import aiohttp
 
-from .queue import JobQueue
-from .chunking import ContentChunker
-from .claude import ClaudeService
-from ..shared.config import get_settings
-from ..shared.logging import setup_logging
-from ..shared.models import AnalysisJob, JobStatus, AnalysisResult
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.worker.queue import JobQueue
+from src.worker.chunking import ContentChunker
+from src.worker.claude import ClaudeService
+from src.shared.config import get_settings
+from src.shared.logging import setup_logging
+from src.shared.models import AnalysisJob, JobStatus, AnalysisResult
 
 # Setup logging
 setup_logging()

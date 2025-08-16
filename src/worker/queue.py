@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from typing import Optional
-from ..shared.models import AnalysisJob, JobStatus
+from src.shared.models import AnalysisJob, JobStatus
 
 logger = logging.getLogger(__name__)
 

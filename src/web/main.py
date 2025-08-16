@@ -5,10 +5,10 @@ import uuid
 import time
 import logging
 
-from ..shared.models import AnalysisRequest, JobStatus, AnalysisJob
-from ..shared.config import get_settings
-from ..shared.logging import setup_logging
-from ..worker.queue import JobQueue
+from src.shared.models import AnalysisRequest, JobStatus, AnalysisJob
+from src.shared.config import get_settings
+from src.shared.logging import setup_logging
+from src.worker.queue import JobQueue
 
 setup_logging()
 logger = logging.getLogger(__name__)
