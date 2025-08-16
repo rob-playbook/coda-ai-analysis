@@ -10,10 +10,15 @@ logger = logging.getLogger(__name__)
 
 class JobQueue:
     def __init__(self, redis_url: str):
+        # Debug: log the URL being used
+        logger.info(f"Redis URL: {redis_url[:20]}...")
+        
         # Handle SSL connections for Upstash
         if redis_url.startswith('rediss://'):
+            logger.info("Using SSL connection")
             self.redis = redis.from_url(redis_url, decode_responses=True, ssl_cert_reqs=None)
         else:
+            logger.info("Using regular connection")
             self.redis = redis.from_url(redis_url, decode_responses=True)
         self.job_queue_key = "analysis_jobs"
         self.job_data_key = "job_data:{job_id}"
