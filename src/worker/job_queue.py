@@ -1,4 +1,4 @@
-# src/worker/queue.py
+# src/worker/job_queue.py
 import redis
 import json
 import logging
@@ -10,7 +10,11 @@ logger = logging.getLogger(__name__)
 
 class JobQueue:
     def __init__(self, redis_url: str):
-        self.redis = redis.from_url(redis_url, decode_responses=True)
+        # Handle SSL connections for Upstash
+        if redis_url.startswith('rediss://'):
+            self.redis = redis.from_url(redis_url, decode_responses=True, ssl_cert_reqs=None)
+        else:
+            self.redis = redis.from_url(redis_url, decode_responses=True)
         self.job_queue_key = "analysis_jobs"
         self.job_data_key = "job_data:{job_id}"
         self.processing_key = "processing_jobs"
