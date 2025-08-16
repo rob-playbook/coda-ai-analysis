@@ -1,24 +1,16 @@
 services:
-  - type: redis
-    name: analysis-queue
-    plan: free
-
-services:
   - type: web
     name: coda-ai-web
     env: python
     plan: starter
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "uvicorn src.web.main:app --host 0.0.0.0 --port $PORT"
+    startCommand: "PYTHONPATH=/opt/render/project/src uvicorn src.web.main:app --host 0.0.0.0 --port $PORT"
     healthCheckPath: "/health"
     envVars:
       - key: CLAUDE_API_KEY
         sync: false
       - key: QUEUE_URL
-        fromService:
-          type: redis
-          name: analysis-queue
-          property: connectionString
+        sync: false
       - key: LOG_LEVEL
         value: INFO
       - key: MAX_CONTENT_SIZE
@@ -29,14 +21,11 @@ services:
     env: python
     plan: starter
     buildCommand: "pip install -r requirements.txt"
-    startCommand: "python src/worker/worker.py"
+    startCommand: "PYTHONPATH=/opt/render/project/src python src/worker/worker.py"
     envVars:
       - key: CLAUDE_API_KEY
         sync: false
       - key: QUEUE_URL
-        fromService:
-          type: redis
-          name: analysis-queue
-          property: connectionString
+        sync: false
       - key: LOG_LEVEL
         value: INFO
