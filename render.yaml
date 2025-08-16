@@ -2,7 +2,7 @@ databases:
   - name: analysis-queue
     databaseName: analysis_queue
     user: queue_user
-    plan: starter
+    plan: free
 
 services:
   - type: web
