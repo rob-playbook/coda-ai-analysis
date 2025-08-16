@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.worker.queue import JobQueue
+from src.worker.job_queue import JobQueue
 from src.worker.chunking import ContentChunker
 from src.worker.claude import ClaudeService
 from src.shared.config import get_settings
