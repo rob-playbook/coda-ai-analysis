@@ -1,0 +1,41 @@
+databases:
+  - name: analysis-queue
+    databaseName: analysis_queue
+    user: queue_user
+    plan: starter
+
+services:
+  - type: web
+    name: coda-ai-web
+    env: python
+    plan: starter
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn src.web.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: "/health"
+    envVars:
+      - key: CLAUDE_API_KEY
+        sync: false
+      - key: QUEUE_URL
+        fromDatabase:
+          name: analysis-queue
+          property: connectionString
+      - key: LOG_LEVEL
+        value: INFO
+      - key: MAX_CONTENT_SIZE
+        value: "100000"
+    
+  - type: worker
+    name: coda-ai-worker
+    env: python
+    plan: starter
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python src/worker/worker.py"
+    envVars:
+      - key: CLAUDE_API_KEY
+        sync: false
+      - key: QUEUE_URL
+        fromDatabase:
+          name: analysis-queue
+          property: connectionString
+      - key: LOG_LEVEL
+        value: INFO
