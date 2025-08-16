@@ -1,7 +1,6 @@
-databases:
-  - name: analysis-queue
-    databaseName: analysis_queue
-    user: queue_user
+services:
+  - type: redis
+    name: analysis-queue
     plan: free
 
 services:
@@ -16,7 +15,8 @@ services:
       - key: CLAUDE_API_KEY
         sync: false
       - key: QUEUE_URL
-        fromDatabase:
+        fromService:
+          type: redis
           name: analysis-queue
           property: connectionString
       - key: LOG_LEVEL
@@ -34,7 +34,8 @@ services:
       - key: CLAUDE_API_KEY
         sync: false
       - key: QUEUE_URL
-        fromDatabase:
+        fromService:
+          type: redis
           name: analysis-queue
           property: connectionString
       - key: LOG_LEVEL
