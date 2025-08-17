@@ -27,11 +27,7 @@ class AnalysisRequest(BaseModel):
     thinking_budget: Optional[int] = Field(default=None, description="Thinking budget tokens")
     include_thinking: bool = Field(default=False, description="Include thinking in response")
     
-    # ITERATION MODE
-    is_iteration: bool = Field(default=False, description="Is this an iteration on existing analysis")
-    
-    # METADATA
-    analysis_context: str = Field(..., description="Context identifier")
+    # ESSENTIAL METADATA
     webhook_url: str = Field(..., description="Coda webhook endpoint for results")
     template_config: Optional[Dict[str, Any]] = Field(default=None, description="Template metadata")
     project_metadata: Optional[Dict[str, Any]] = Field(default=None, description="Project metadata")

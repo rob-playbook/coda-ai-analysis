@@ -18,7 +18,7 @@ class ContentChunker:
         self.max_tokens = 11000  # Conservative limit for Claude context
         self.overlap_tokens = 200  # Maintain context between chunks
         
-    def chunk_content(self, content: str, user_prompt: str = "", is_iteration: bool = False) -> List[str]:
+    def chunk_content(self, content: str, user_prompt: str = "") -> List[str]:
         """
         Smart content chunking - only chunks the CONTENT, not the prompts
         Coda handles all prompt construction

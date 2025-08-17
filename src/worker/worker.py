@@ -63,13 +63,10 @@ class AnalysisWorker:
         try:
             request_data = job.request_data
             
-            # Step 1: Chunk content based on mode
-            is_iteration = request_data.is_iteration
-            
+            # Step 1: Chunk content
             chunks = self.chunker.chunk_content(
                 request_data.content,
-                request_data.user_prompt,
-                is_iteration=is_iteration
+                request_data.user_prompt
             )
             
             chunk_count = len(chunks)
@@ -81,7 +78,7 @@ class AnalysisWorker:
             )
             
             # Step 3: Combine results
-            combined_result = self._combine_chunk_results(results, is_iteration)
+            combined_result = self._combine_chunk_results(results)
             
             # Step 4: Quality assessment
             quality_status = await self.claude_service.assess_quality(combined_result)
@@ -100,8 +97,7 @@ class AnalysisWorker:
                     "job_id": job.job_id,
                     "chunk_count": chunk_count,
                     "total_characters": len(combined_result),
-                    "processing_time_seconds": round(processing_time, 2),
-                    "is_iteration": is_iteration
+                    "processing_time_seconds": round(processing_time, 2)
                 }
             )
             
@@ -143,20 +139,15 @@ class AnalysisWorker:
                 except Exception as webhook_error:
                     logger.error(f"Failed to send error webhook: {webhook_error}")
     
-    def _combine_chunk_results(self, results: list, is_iteration: bool) -> str:
+    def _combine_chunk_results(self, results: list) -> str:
         """Combine chunk results maintaining readability and context"""
         if len(results) == 1:
             return results[0]
         
         # For multiple chunks, combine with clear separators
         separator = "\n\n" + "="*50 + " CHUNK SEPARATOR " + "="*50 + "\n\n"
-        
-        if is_iteration:
-            header = "="*50 + " COMBINED VALIDATION & ANALYSIS RESULTS " + "="*50 + "\n\n"
-            return header + separator.join(results)
-        else:
-            header = "="*50 + " COMBINED ANALYSIS RESULTS " + "="*50 + "\n\n"
-            return header + separator.join(results)
+        header = "="*50 + " COMBINED ANALYSIS RESULTS " + "="*50 + "\n\n"
+        return header + separator.join(results)
     
     async def _send_webhook(self, webhook_url: str, result: AnalysisResult, max_retries: int = 3) -> bool:
         """Send result to Coda via webhook with retry logic"""
