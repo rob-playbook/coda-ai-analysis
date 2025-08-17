@@ -6,7 +6,7 @@ import time
 import logging
 import asyncio
 
-from src.shared.models import AnalysisRequest, JobStatus, AnalysisJob, PollingRequest
+from src.shared.models import AnalysisRequest, JobStatus, AnalysisJob, PollingRequest, AnalysisResult
 from src.shared.config import get_settings
 from src.shared.logging import setup_logging
 from src.worker.job_queue import JobQueue
@@ -86,6 +86,20 @@ async def start_analysis(request: PollingRequest):
                         try:
                             result = await claude_service.process_chunk(chunks[0], request)
                             analysis_name = await claude_service.generate_analysis_name(result)
+                            
+                            # Store result for polling access even for sync completion
+                            sync_result = AnalysisResult(
+                                record_id=request.record_id,
+                                status="SUCCESS",
+                                analysis_result=result,
+                                analysis_name=analysis_name,
+                                processing_stats={
+                                    "job_id": job_id,
+                                    "processing_time_seconds": "immediate",
+                                    "sync_completion": True
+                                }
+                            )
+                            job_queue.store_result(job_id, sync_result)
                             
                             return {
                                 "job_id": job_id,
