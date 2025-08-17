@@ -147,30 +147,30 @@ async def get_analysis_result(job_id: str):
     NEW: Get analysis results by job ID
     """
     try:
-        # Check if job exists in storage
+        # First check if we have a stored result (works for both sync and async)
+        result = job_queue.get_job_result(job_id)
+        if result:
+            return {
+                "job_id": job_id,
+                "status": "complete",
+                "analysis_result": result.analysis_result,
+                "analysis_name": result.analysis_name,
+                "processing_stats": result.processing_stats
+            }
+        
+        # No stored result, check if job exists in queue (async jobs)
         job = job_queue.get_job(job_id)
         
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         
         if job.status == JobStatus.SUCCESS:
-            # Retrieve completed results from storage
-            result = job_queue.get_job_result(job_id)
-            if result:
-                return {
-                    "job_id": job_id,
-                    "status": "complete",
-                    "analysis_result": result.analysis_result,
-                    "analysis_name": result.analysis_name,
-                    "processing_stats": result.processing_stats
-                }
-            else:
-                # Job marked success but no result - data issue
-                return {
-                    "job_id": job_id,
-                    "status": "failed",
-                    "error_message": "Analysis completed but result data not found"
-                }
+            # Job marked success but no result stored - data issue
+            return {
+                "job_id": job_id,
+                "status": "failed",
+                "error_message": "Analysis completed but result data not found"
+            }
         elif job.status == JobStatus.FAILED:
             return {
                 "job_id": job_id,
@@ -185,6 +185,8 @@ async def get_analysis_result(job_id: str):
                 "message": "Analysis still in progress"
             }
             
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
     except Exception as e:
         logger.error(f"Result retrieval failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
