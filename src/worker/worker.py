@@ -41,7 +41,7 @@ class AnalysisWorker:
         while self.running:
             try:
                 # Get next job from queue
-                job = await self.job_queue.dequeue_job()
+                job = self.job_queue.dequeue_job()
                 
                 if job:
                     await self.process_job(job)
@@ -65,12 +65,11 @@ class AnalysisWorker:
             
             # Step 1: Chunk content based on mode
             is_iteration = request_data.is_iteration
-            iteration_content = request_data.iteration_content
             
             chunks = self.chunker.chunk_content(
                 request_data.content,
-                is_iteration=is_iteration,
-                iteration_content=iteration_content
+                request_data.user_prompt,
+                is_iteration=is_iteration
             )
             
             chunk_count = len(chunks)
@@ -78,7 +77,7 @@ class AnalysisWorker:
             
             # Step 2: Process chunks through Claude API
             results = await self.claude_service.process_chunks_sequential(
-                chunks, request_data.prompt_config
+                chunks, request_data
             )
             
             # Step 3: Combine results
@@ -110,15 +109,15 @@ class AnalysisWorker:
             
             if success:
                 job.status = JobStatus.SUCCESS
-                await self.job_queue.complete_job(job)
+                self.job_queue.complete_job(job)
                 logger.info(f"Job {job.job_id} completed successfully in {processing_time:.2f}s")
             else:
                 # Webhook failed - retry job if possible
                 if job.retry_count < job.max_retries:
-                    await self.job_queue.retry_job(job)
+                    self.job_queue.retry_job(job)
                     logger.warning(f"Job {job.job_id} webhook failed, queued for retry")
                 else:
-                    await self.job_queue.fail_job(job, "Webhook delivery failed after max retries")
+                    self.job_queue.fail_job(job, "Webhook delivery failed after max retries")
                     logger.error(f"Job {job.job_id} failed - webhook delivery failed")
             
         except Exception as e:
@@ -127,10 +126,10 @@ class AnalysisWorker:
             
             # Try to retry job if possible
             if job.retry_count < job.max_retries:
-                await self.job_queue.retry_job(job)
+                self.job_queue.retry_job(job)
                 logger.info(f"Job {job.job_id} queued for retry (attempt {job.retry_count + 1})")
             else:
-                await self.job_queue.fail_job(job, error_message)
+                self.job_queue.fail_job(job, error_message)
                 
                 # Try to send error webhook to Coda
                 try:

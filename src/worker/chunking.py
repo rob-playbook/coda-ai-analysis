@@ -1,13 +1,13 @@
-# src/worker/chunking.py
+# Updated chunking.py - Simplified for pre-built prompts
 import tiktoken
-from typing import List
+from typing import List, Tuple
 import re
 import logging
 
 logger = logging.getLogger(__name__)
 
 class ContentChunker:
-    def __init__(self):
+    def __init__(self, model_name: str = "claude-3-5-sonnet-20241022"):
         try:
             # Use GPT-4 tokenizer as approximation for Claude
             self.encoder = tiktoken.encoding_for_model("gpt-4")
@@ -15,27 +15,42 @@ class ContentChunker:
             # Fallback to basic tokenizer
             self.encoder = tiktoken.get_encoding("cl100k_base")
         
-        self.max_tokens = 11000  # Conservative limit for Claude
+        self.max_tokens = 11000  # Conservative limit for Claude context
+        self.overlap_tokens = 200  # Maintain context between chunks
         
-    def chunk_content(self, content: str, is_iteration: bool = False, 
-                     iteration_content: str = None) -> List[str]:
-        """Smart content chunking with semantic boundary respect"""
+    def chunk_content(self, content: str, user_prompt: str = "", is_iteration: bool = False) -> List[str]:
+        """
+        Smart content chunking - only chunks the CONTENT, not the prompts
+        Coda handles all prompt construction
+        """
         try:
-            if is_iteration:
-                return self._chunk_iteration_content(content, iteration_content)
-            else:
-                return self._chunk_regular_content(content)
+            # Estimate tokens for user prompt to reserve space
+            prompt_tokens = len(self.encoder.encode(user_prompt)) if user_prompt else 1000
+            
+            # Adjust max tokens to account for prompt overhead
+            available_tokens = self.max_tokens - prompt_tokens - 500  # Safety buffer
+            
+            if available_tokens <= 1000:
+                logger.warning(f"Very little space left for content after prompt: {available_tokens} tokens")
+                available_tokens = 1000  # Minimum content space
+            
+            return self._chunk_content_by_tokens(content, available_tokens)
+            
         except Exception as e:
             logger.error(f"Content chunking failed: {e}")
+            # Fallback to simple splitting
             return self._simple_fallback_chunking(content)
     
-    def _chunk_regular_content(self, content: str) -> List[str]:
-        """Regular mode: Split analysis context content intelligently"""
-        # Extract content blocks (respecting <block> boundaries)
+    def _chunk_content_by_tokens(self, content: str, max_content_tokens: int) -> List[str]:
+        """
+        Chunk content respecting token limits and semantic boundaries
+        """
+        # First, try to respect structured content boundaries
         blocks = self._extract_content_blocks(content)
         
         if not blocks:
-            return self._chunk_by_paragraphs(content)
+            # No structured blocks found - use paragraph-based chunking
+            return self._chunk_by_paragraphs(content, max_content_tokens)
         
         # Group blocks into chunks under token limit
         chunks = []
@@ -45,83 +60,54 @@ class ContentChunker:
         for block in blocks:
             block_tokens = len(self.encoder.encode(block))
             
-            if block_tokens > self.max_tokens:
+            # Check if single block exceeds limit
+            if block_tokens > max_content_tokens:
+                logger.warning(f"Single block exceeds token limit: {block_tokens} tokens")
+                # Add current chunk if not empty
                 if current_chunk:
                     chunks.append(current_chunk.strip())
                     current_chunk = ""
                     current_tokens = 0
-                sub_chunks = self._chunk_by_paragraphs(block)
+                # Split large block by paragraphs
+                sub_chunks = self._chunk_by_paragraphs(block, max_content_tokens)
                 chunks.extend(sub_chunks)
                 continue
             
-            if current_tokens + block_tokens > self.max_tokens and current_chunk:
+            if current_tokens + block_tokens > max_content_tokens and current_chunk:
+                # Current chunk would exceed limit - save it and start new one
                 chunks.append(current_chunk.strip())
                 current_chunk = block
                 current_tokens = block_tokens
             else:
+                # Add block to current chunk
                 current_chunk += "\n\n" + block if current_chunk else block
                 current_tokens += block_tokens
         
+        # Add final chunk
         if current_chunk:
             chunks.append(current_chunk.strip())
         
         return chunks if chunks else [content]
     
-    def _chunk_iteration_content(self, analysis_content: str, iteration_content: str) -> List[str]:
-        """Iteration mode: Validation content + analysis content structure"""
-        validation_section = f"**CONTENT TO VALIDATE:**\n{iteration_content}"
-        analysis_section = f"**ITEMS FOR ANALYSIS:**\n{analysis_content}"
-        
-        validation_tokens = len(self.encoder.encode(validation_section))
-        analysis_tokens = len(self.encoder.encode(analysis_section))
-        
-        # Check if both sections fit in single chunk
-        if validation_tokens + analysis_tokens <= self.max_tokens:
-            return [f"{validation_section}\n\n{analysis_section}"]
-        
-        # Need to split - preserve validation section integrity
-        chunks = []
-        
-        # First chunk: validation + as much analysis as possible
-        analysis_blocks = self._extract_content_blocks(analysis_content)
-        first_chunk = validation_section + "\n\n**ITEMS FOR ANALYSIS:**\n"
-        current_tokens = len(self.encoder.encode(first_chunk))
-        
-        used_blocks = 0
-        for i, block in enumerate(analysis_blocks):
-            block_tokens = len(self.encoder.encode(block))
-            if current_tokens + block_tokens <= self.max_tokens:
-                first_chunk += block + "\n\n"
-                current_tokens += block_tokens
-                used_blocks = i + 1
-            else:
-                break
-        
-        chunks.append(first_chunk.strip())
-        
-        # Remaining chunks: analysis content only
-        remaining_blocks = analysis_blocks[used_blocks:]
-        if remaining_blocks:
-            remaining_content = "\n\n".join(remaining_blocks)
-            additional_chunks = self._chunk_regular_content(remaining_content)
-            chunks.extend(additional_chunks)
-        
-        return chunks
-    
     def _extract_content_blocks(self, content: str) -> List[str]:
-        """Extract content blocks respecting <block> boundaries"""
+        """
+        Extract content blocks respecting <block> boundaries
+        """
+        # Pattern to match content within < > brackets
         pattern = r'<([^<>]+?)>'
         matches = re.findall(pattern, content, re.DOTALL)
         
         if matches:
             return [f"<{match.strip()}>" for match in matches if match.strip()]
         
-        # No bracketed content - split by double newlines
+        # No bracketed content found - split by double newlines
         blocks = [block.strip() for block in content.split('\n\n') if block.strip()]
         return blocks if blocks else [content]
     
-    def _chunk_by_paragraphs(self, content: str) -> List[str]:
-        """Fallback chunking by paragraphs"""
+    def _chunk_by_paragraphs(self, content: str, max_tokens: int) -> List[str]:
+        """
+        Fallback chunking by paragraphs when no structure detected
+        """
         paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
         
         chunks = []
@@ -131,26 +117,19 @@ class ContentChunker:
         for paragraph in paragraphs:
             para_tokens = len(self.encoder.encode(paragraph))
             
-            if para_tokens > self.max_tokens:
+            # Check if single paragraph exceeds limit
+            if para_tokens > max_tokens:
+                logger.warning(f"Single paragraph exceeds token limit: {para_tokens} tokens")
+                # Add current chunk if not empty
                 if current_chunk:
                     chunks.append(current_chunk.strip())
                     current_chunk = ""
                     current_tokens = 0
                 # Split large paragraph by sentences
-                sentences = paragraph.split('. ')
-                temp_chunk = ""
-                for sentence in sentences:
-                    if len(self.encoder.encode(temp_chunk + sentence)) <= self.max_tokens:
-                        temp_chunk += sentence + ". "
-                    else:
-                        if temp_chunk:
-                            chunks.append(temp_chunk.strip())
-                        temp_chunk = sentence + ". "
-                if temp_chunk:
-                    chunks.append(temp_chunk.strip())
+                chunks.extend(self._chunk_by_sentences(paragraph, max_tokens))
                 continue
             
-            if current_tokens + para_tokens > self.max_tokens and current_chunk:
+            if current_tokens + para_tokens > max_tokens and current_chunk:
                 chunks.append(current_chunk.strip())
                 current_chunk = paragraph
                 current_tokens = para_tokens
@@ -163,8 +142,33 @@ class ContentChunker:
         
         return chunks if chunks else [content]
     
+    def _chunk_by_sentences(self, paragraph: str, max_tokens: int) -> List[str]:
+        """
+        Split large paragraph by sentences
+        """
+        sentences = [s.strip() + '.' for s in paragraph.split('.') if s.strip()]
+        chunks = []
+        current_chunk = ""
+        
+        for sentence in sentences:
+            sentence_tokens = len(self.encoder.encode(sentence))
+            
+            if len(self.encoder.encode(current_chunk + " " + sentence)) <= max_tokens:
+                current_chunk += " " + sentence if current_chunk else sentence
+            else:
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+                current_chunk = sentence
+        
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+        
+        return chunks
+    
     def _simple_fallback_chunking(self, content: str) -> List[str]:
-        """Simple character-based chunking as last resort"""
+        """
+        Simple character-based chunking as last resort
+        """
         chunk_size = self.max_tokens * 4  # Rough character estimate
         chunks = []
         

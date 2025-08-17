@@ -37,7 +37,7 @@ async def health_check():
     """Health check endpoint for Render monitoring"""
     try:
         # Test queue connectivity
-        await job_queue.ping()
+        job_queue.ping()
         return {
             "status": "healthy", 
             "service": "coda-ai-analysis-web",
@@ -54,6 +54,9 @@ async def process_analysis(request: AnalysisRequest):
         # Validate request
         if not request.content or len(request.content.strip()) == 0:
             raise HTTPException(status_code=400, detail="Content cannot be empty")
+        
+        if not request.user_prompt or len(request.user_prompt.strip()) == 0:
+            raise HTTPException(status_code=400, detail="User prompt cannot be empty")
         
         if not request.webhook_url:
             raise HTTPException(status_code=400, detail="Webhook URL required")
@@ -75,7 +78,7 @@ async def process_analysis(request: AnalysisRequest):
         )
         
         # Queue job for background processing
-        await job_queue.enqueue_job(job)
+        job_queue.enqueue_job(job)
         
         logger.info(f"Analysis job queued: {job_id} for record {request.record_id}")
         
@@ -96,7 +99,7 @@ async def process_analysis(request: AnalysisRequest):
 async def get_job_status(job_id: str):
     """Check job status (for debugging/monitoring)"""
     try:
-        job = await job_queue.get_job(job_id)
+        job = job_queue.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         

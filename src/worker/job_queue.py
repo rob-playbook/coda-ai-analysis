@@ -24,7 +24,7 @@ class JobQueue:
         self.job_data_key = "job_data:{job_id}"
         self.processing_key = "processing_jobs"
         
-    async def ping(self) -> bool:
+    def ping(self) -> bool:
         """Test queue connectivity"""
         try:
             return self.redis.ping()
@@ -32,7 +32,7 @@ class JobQueue:
             logger.error(f"Queue ping failed: {e}")
             return False
     
-    async def enqueue_job(self, job: AnalysisJob) -> bool:
+    def enqueue_job(self, job: AnalysisJob) -> bool:
         """Add job to queue"""
         try:
             # Store job data
@@ -48,7 +48,7 @@ class JobQueue:
             logger.error(f"Failed to enqueue job {job.job_id}: {e}")
             return False
     
-    async def dequeue_job(self) -> Optional[AnalysisJob]:
+    def dequeue_job(self) -> Optional[AnalysisJob]:
         """Get next job from queue"""
         try:
             # Blocking pop with timeout
@@ -79,7 +79,7 @@ class JobQueue:
             logger.error(f"Failed to dequeue job: {e}")
             return None
     
-    async def complete_job(self, job: AnalysisJob) -> bool:
+    def complete_job(self, job: AnalysisJob) -> bool:
         """Mark job as completed"""
         try:
             job.completed_at = time.time()
@@ -93,7 +93,7 @@ class JobQueue:
             logger.error(f"Failed to complete job {job.job_id}: {e}")
             return False
     
-    async def fail_job(self, job: AnalysisJob, error_message: str) -> bool:
+    def fail_job(self, job: AnalysisJob, error_message: str) -> bool:
         """Mark job as failed"""
         try:
             job.status = JobStatus.FAILED
@@ -110,7 +110,7 @@ class JobQueue:
             logger.error(f"Failed to mark job as failed {job.job_id}: {e}")
             return False
     
-    async def get_job(self, job_id: str) -> Optional[AnalysisJob]:
+    def get_job(self, job_id: str) -> Optional[AnalysisJob]:
         """Get job by ID"""
         try:
             job_key = self.job_data_key.format(job_id=job_id)
@@ -123,3 +123,23 @@ class JobQueue:
         except Exception as e:
             logger.error(f"Failed to get job {job_id}: {e}")
             return None
+    
+    def retry_job(self, job: AnalysisJob) -> bool:
+        """Retry failed job if under retry limit"""
+        try:
+            if job.retry_count >= job.max_retries:
+                return False
+            
+            job.retry_count += 1
+            job.status = JobStatus.PENDING
+            job.started_at = None
+            job.error_message = None
+            
+            # Re-queue for processing
+            self.enqueue_job(job)
+            
+            logger.info(f"Job retried: {job.job_id} (attempt {job.retry_count + 1})")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to retry job {job.job_id}: {e}")
+            return False

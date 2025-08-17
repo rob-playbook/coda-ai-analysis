@@ -1,4 +1,4 @@
-# src/worker/claude.py
+# Updated claude.py - Uses pre-built prompts from Coda
 import anthropic
 from typing import Dict, Any, List
 import asyncio
@@ -17,23 +17,40 @@ class ClaudeService:
         wait=wait_exponential(multiplier=1, min=4, max=30),
         reraise=True
     )
-    async def process_chunk(self, chunk_content: str, prompt_config: Dict[str, Any]) -> str:
-        """Process single chunk through Claude API with retry logic"""
+    async def process_chunk(self, chunk_content: str, request_data: Any) -> str:
+        """
+        Process single chunk through Claude API using pre-built prompts from Coda
+        """
         try:
-            # Build complete prompt from configuration
-            system_prompt = self._build_system_prompt(prompt_config)
-            user_prompt = self._build_user_prompt(chunk_content, prompt_config)
-            
-            # Configure API call parameters
+            # Build API parameters from Coda's pre-built prompts
             api_params = {
-                "model": prompt_config.get("model", "claude-3-5-sonnet-20241022"),
-                "max_tokens": min(prompt_config.get("max_tokens", 2000), 8192),
-                "temperature": max(0.0, min(1.0, prompt_config.get("temperature", 0.2))),
-                "messages": [{"role": "user", "content": user_prompt}]
+                "model": request_data.model,
+                "max_tokens": min(request_data.max_tokens, 8192),
+                "temperature": max(0.0, min(1.0, request_data.temperature)),
+                "messages": [
+                    {
+                        "role": "user", 
+                        "content": self._inject_content_into_user_prompt(
+                            request_data.user_prompt, 
+                            chunk_content
+                        )
+                    }
+                ]
             }
             
-            if system_prompt:
-                api_params["system"] = system_prompt
+            # Add system prompt if provided by Coda
+            if request_data.system_prompt:
+                api_params["system"] = request_data.system_prompt
+            
+            # Extended thinking support
+            if request_data.extended_thinking:
+                api_params["thinking"] = {"type": "enabled"}
+                if request_data.thinking_budget:
+                    api_params["thinking"]["budget_tokens"] = max(
+                        1024, 
+                        min(request_data.thinking_budget, request_data.max_tokens - 200)
+                    )
+                api_params["include_thinking"] = request_data.include_thinking
             
             logger.info(f"Calling Claude API with {len(chunk_content)} characters")
             start_time = time.time()
@@ -57,14 +74,35 @@ class ClaudeService:
             logger.error(f"Unexpected error in Claude API call: {e}")
             raise
     
-    async def process_chunks_sequential(self, chunks: List[str], prompt_config: Dict[str, Any]) -> List[str]:
+    def _inject_content_into_user_prompt(self, user_prompt: str, chunk_content: str) -> str:
+        """
+        Inject chunk content into Coda's pre-built user prompt
+        
+        Coda can use placeholders like {{CONTENT}} or {{CHUNK_CONTENT}} in their prompt
+        """
+        # Check for common placeholder patterns
+        placeholders = [
+            "{{CONTENT}}", 
+            "{{CHUNK_CONTENT}}", 
+            "{{ANALYSIS_CONTENT}}", 
+            "{{DATA}}"
+        ]
+        
+        for placeholder in placeholders:
+            if placeholder in user_prompt:
+                return user_prompt.replace(placeholder, chunk_content)
+        
+        # If no placeholder found, append content to end
+        return f"{user_prompt}\n\n{chunk_content}"
+    
+    async def process_chunks_sequential(self, chunks: List[str], request_data: Any) -> List[str]:
         """Process multiple chunks sequentially to avoid rate limits"""
         results = []
         
         for i, chunk in enumerate(chunks):
             try:
                 logger.info(f"Processing chunk {i+1}/{len(chunks)}")
-                result = await self.process_chunk(chunk, prompt_config)
+                result = await self.process_chunk(chunk, request_data)
                 results.append(result)
                 
                 # Add delay between chunks to respect rate limits
@@ -76,86 +114,6 @@ class ClaudeService:
                 results.append(f"[Error processing chunk {i+1}: {str(e)[:200]}]")
         
         return results
-    
-    def _build_system_prompt(self, prompt_config: Dict[str, Any]) -> str:
-        """Build system prompt from configuration"""
-        if not prompt_config.get("include_system_prompt", True):
-            return ""
-        
-        language = prompt_config.get("language", "English US")
-        components = [f"Create output in {language} (language and spelling)."]
-        
-        # Add role, approach, and speed/accuracy if specified
-        for key in ["analyst_role", "system_approach", "system_speed_accuracy"]:
-            value = prompt_config.get(key)
-            if value and str(value).strip():
-                components.append(str(value).strip())
-        
-        return " ".join(components)
-    
-    def _build_user_prompt(self, chunk_content: str, prompt_config: Dict[str, Any]) -> str:
-        """Build user prompt from chunk content and configuration"""
-        prompt_parts = []
-        
-        # Handle free-text vs structured prompts
-        free_prompt = prompt_config.get("free_prompt")
-        if free_prompt and str(free_prompt).strip():
-            prompt_parts.append(str(free_prompt).strip())
-            
-            # Optionally include main prompt components
-            if prompt_config.get("include_main_prompt", False):
-                main_components = self._build_main_prompt_components(prompt_config)
-                if main_components:
-                    prompt_parts.append(main_components)
-        else:
-            # Structured mode - build from components
-            main_components = self._build_main_prompt_components(prompt_config)
-            if main_components:
-                prompt_parts.append(main_components)
-        
-        # Add content if enabled
-        if prompt_config.get("include_content", True):
-            prompt_parts.append(chunk_content)
-        
-        return "\n\n".join(prompt_parts)
-    
-    def _build_main_prompt_components(self, prompt_config: Dict[str, Any]) -> str:
-        """Build main prompt from individual components"""
-        components = []
-        
-        # Action + Focus
-        action = str(prompt_config.get("main_action", "")).strip()
-        focus = str(prompt_config.get("main_focus", "")).strip()
-        if action or focus:
-            action_focus = f"{action} {focus}".strip()
-            if action_focus:
-                components.append(action_focus)
-        
-        # Scope
-        scope = str(prompt_config.get("main_scope", "")).strip()
-        if scope:
-            components.append(f"Focus on {scope}")
-        
-        # Output
-        output = str(prompt_config.get("main_output", "")).strip()
-        if output:
-            # Handle [NUMBER] placeholder
-            output_number = prompt_config.get("main_output_number", "")
-            if output_number and "[NUMBER]" in output:
-                output = output.replace("[NUMBER]", str(output_number))
-            components.append(f"Create {output}")
-        
-        # Constraints
-        constraint = str(prompt_config.get("main_output_constraint", "")).strip()
-        if constraint:
-            components.append(constraint)
-        
-        # Additional instructions
-        additional = str(prompt_config.get("main_additional_text", "")).strip()
-        if additional:
-            components.append(f"Additional instructions: {additional}")
-        
-        return ". ".join(components) + "." if components else ""
     
     async def assess_quality(self, analysis_result: str) -> str:
         """Assess quality of analysis result using separate Claude call"""

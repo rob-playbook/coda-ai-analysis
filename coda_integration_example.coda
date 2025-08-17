@@ -1,0 +1,114 @@
+# Example Coda Pack Integration Formula
+# This shows how Coda should send pre-built prompts
+
+RunActions(
+  // === STEP 1: BUILD COMPLETE PROMPTS IN CODA ===
+  
+  WithName(
+    // Build System Prompt (exactly as current formula does)
+    If(
+      IncludeSystemPromptField,
+      "Create output in " + 
+      If(LanguageField.IsBlank(), "English US", LanguageField.ToText()) +
+      " (language and spelling). " +
+      List(
+        SystemRoleField.ToText(),
+        SystemApproachField.ToText(), 
+        SystemSpeedAccuracyField.ToText()
+      ).Filter(CurrentValue.IsNotBlank()).Join(". ") + ".",
+      ""
+    ),
+    SystemPromptBuilt,
+    
+    WithName(
+      // Build User Prompt (exactly as current formula does)
+      If(
+        [FREE-TEXT PROMPT].[Free Text].First().IsNotBlank(),
+        // Free-text mode
+        [FREE-TEXT PROMPT].[Free Text].First().ToText() +
+        If(
+          IncludeMainPromptField AND 
+          (MainActionField.IsNotBlank() OR MainFocusField.IsNotBlank() OR 
+           MainScopeField.IsNotBlank() OR MainOutputField.IsNotBlank() OR
+           MainOutputConstraintField.IsNotBlank() OR MainAdditionalTextField.IsNotBlank()),
+          Character(10) + Character(10) +
+          List(
+            If(MainActionField.IsNotBlank() OR MainFocusField.IsNotBlank(),
+               MainActionField.ToText() + " " + MainFocusField.ToText(), ""),
+            If(MainScopeField.IsNotBlank(), "Focus on " + MainScopeField.ToText(), ""),
+            If(MainOutputField.IsNotBlank(), 
+               "Create " + MainOutputField.ToText().Substitute("[NUMBER]", MainOutputNumberField), ""),
+            If(MainOutputConstraintField.IsNotBlank(), MainOutputConstraintField.ToText(), ""),
+            If(MainAdditionalTextField.IsNotBlank(), 
+               "Additional instructions: " + MainAdditionalTextField.ToText(), "")
+          ).Filter(CurrentValue.IsNotBlank()).Join(". ") + ".",
+          ""
+        ),
+        // Structured mode  
+        List(
+          If(MainActionField.IsNotBlank() OR MainFocusField.IsNotBlank(),
+             MainActionField.ToText() + " " + MainFocusField.ToText(), ""),
+          If(MainScopeField.IsNotBlank(), "Focus on " + MainScopeField.ToText(), ""),
+          If(MainOutputField.IsNotBlank(), 
+             "Create " + MainOutputField.ToText().Substitute("[NUMBER]", MainOutputNumberField), ""),
+          If(MainOutputConstraintField.IsNotBlank(), MainOutputConstraintField.ToText(), ""),
+          If(MainAdditionalTextField.IsNotBlank(), 
+             "Additional instructions: " + MainAdditionalTextField.ToText(), "")
+        ).Filter(CurrentValue.IsNotBlank()).Join(". ") + "."
+      ) + 
+      Character(10) + Character(10) + 
+      If(
+        [DB AI Analysis].Filter(IsIterate = true).Count() > 0,
+        "**CONTENT TO VALIDATE:**" + Character(10) + 
+        [DB AI Analysis].Filter(IsIterate = true).First().[Analysis result] +
+        Character(10) + Character(10) + "**ITEMS FOR ANALYSIS:**" + Character(10) + "{{CONTENT}}",
+        "**ITEMS FOR ANALYSIS:**" + Character(10) + "{{CONTENT}}"
+      ),
+      UserPromptBuilt,
+      
+      // === STEP 2: CREATE ANALYSIS RECORD ===
+      AddRow([DB AI Analysis],
+        [Name], ([DB AI Analysis].[Row name].Max() + 1) + " - " + AnalysisContext.ToText() + " - Queued...",
+        [Status], "Processing",
+        [Analysis context], AnalysisContext,
+        [Date], Now(),
+        // ... all existing metadata fields
+      ),
+      
+      // === STEP 3: SEND TO RENDER WITH PRE-BUILT PROMPTS ===
+      WithName([DB AI Analysis].Last(), CurrentRecord,
+        WithName(
+          PostData("https://your-app.onrender.com/analyze", {
+            "record_id": CurrentRecord.Id,
+            "content": [DB AI Context].Filter(Name.ToText() = AnalysisContext.ToText()).Content.First(),
+            "system_prompt": SystemPromptBuilt,  // ✅ PRE-BUILT BY CODA
+            "user_prompt": UserPromptBuilt,      // ✅ PRE-BUILT BY CODA  
+            "model": SettingsModelField,
+            "max_tokens": SettingsMaxTokensField,
+            "temperature": SettingsTemperatureField,
+            "extended_thinking": ExtendedThinkingField,
+            "thinking_budget": ThinkingBudgetField,
+            "include_thinking": IncludeThinkingField,
+            "is_iteration": [DB AI Analysis].Filter(IsIterate = true).Count() > 0,
+            "analysis_context": AnalysisContext.ToText(),
+            "webhook_url": "https://coda.io/hooks/your-webhook-endpoint",
+            "template_config": If(SelectTemplate.IsNotBlank(), SelectTemplate.ToText(), ""),
+            "project_metadata": {
+              "project": [DB AI Context].Filter(Name.ToText() = AnalysisContext.ToText()).Project.First(),
+              "interview": [DB AI Context].Filter(Name.ToText() = AnalysisContext.ToText()).Interview.First(),
+              "participant": [DB AI Context].Filter(Name.ToText() = AnalysisContext.ToText()).[Participant name].First()
+            }
+          }),
+          ServiceResponse,
+          
+          // === STEP 4: UPDATE WITH JOB STATUS ===
+          ModifyRows(CurrentRecord,
+            [Processing Status], If(ServiceResponse.Contains("job_id"), "Queued", "Service Error"),
+            [Job ID], If(ServiceResponse.Contains("job_id"), ServiceResponse.job_id, ""),
+            [Error Details], If(ServiceResponse.Contains("error"), ServiceResponse.error, "")
+          )
+        )
+      )
+    )
+  )
+)
