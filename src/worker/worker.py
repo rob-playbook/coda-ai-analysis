@@ -5,6 +5,7 @@ import time
 import signal
 import sys
 import aiohttp
+import os
 
 import sys
 import os
@@ -28,6 +29,15 @@ class AnalysisWorker:
         self.claude_service = ClaudeService(self.settings.claude_api_key)
         self.chunker = ContentChunker()
         self.running = True
+        
+        # Get webhook configuration from environment
+        self.coda_webhook_url = os.environ.get('CODA_WEBHOOK_URL')
+        self.coda_api_token = os.environ.get('CODA_API_TOKEN')
+        
+        if self.coda_webhook_url:
+            logger.info("Webhook notifications enabled")
+        else:
+            logger.info("Webhook notifications disabled - polling only mode")
         
     async def start(self):
         """Start the worker process"""
@@ -86,7 +96,7 @@ class AnalysisWorker:
             # Step 5: Generate analysis name
             analysis_name = await self.claude_service.generate_analysis_name(combined_result)
             
-            # Step 6: Send results to Coda
+            # Step 6: Store results for polling access
             processing_time = time.time() - start_time
             final_result = AnalysisResult(
                 record_id=request_data.record_id,
@@ -104,27 +114,30 @@ class AnalysisWorker:
             # Store result for polling access
             self.job_queue.store_result(job.job_id, final_result)
             
-            # Send webhook if URL provided
-            if request_data.webhook_url and request_data.webhook_url.strip():
-                success = await self._send_webhook(request_data.webhook_url, final_result)
-                
-                if success:
-                    job.status = JobStatus.SUCCESS
-                    self.job_queue.complete_job(job)
-                    logger.info(f"Job {job.job_id} completed successfully in {processing_time:.2f}s")
-                else:
-                    # Webhook failed - retry job if possible
-                    if job.retry_count < job.max_retries:
-                        self.job_queue.retry_job(job)
-                        logger.warning(f"Job {job.job_id} webhook failed, queued for retry")
-                    else:
-                        self.job_queue.fail_job(job, "Webhook delivery failed after max retries")
-                        logger.error(f"Job {job.job_id} failed - webhook delivery failed")
-            else:
-                # No webhook - polling only, mark as complete
+            # Send notification webhook to Coda (NEW APPROACH)
+            webhook_success = True
+            if self.coda_webhook_url and self.coda_api_token:
+                webhook_success = await self._send_coda_webhook_notification(job.job_id, quality_status)
+            
+            # Handle legacy webhook if provided in request (BACKWARD COMPATIBILITY)
+            if hasattr(request_data, 'webhook_url') and request_data.webhook_url and request_data.webhook_url.strip():
+                legacy_webhook_success = await self._send_legacy_webhook(request_data.webhook_url, final_result)
+                if not legacy_webhook_success:
+                    webhook_success = False
+            
+            # Complete or retry job based on webhook success
+            if webhook_success:
                 job.status = JobStatus.SUCCESS
                 self.job_queue.complete_job(job)
-                logger.info(f"Job {job.job_id} completed successfully in {processing_time:.2f}s (polling mode)")
+                logger.info(f"Job {job.job_id} completed successfully in {processing_time:.2f}s")
+            else:
+                # Webhook failed - retry job if possible
+                if job.retry_count < job.max_retries:
+                    self.job_queue.retry_job(job)
+                    logger.warning(f"Job {job.job_id} webhook failed, queued for retry")
+                else:
+                    self.job_queue.fail_job(job, "Webhook delivery failed after max retries")
+                    logger.error(f"Job {job.job_id} failed - webhook delivery failed")
             
         except Exception as e:
             error_message = f"Job processing failed: {str(e)}"
@@ -137,7 +150,7 @@ class AnalysisWorker:
             else:
                 self.job_queue.fail_job(job, error_message)
                 
-                # Store error result and try to send error webhook if URL provided
+                # Store error result and try to send error webhook
                 try:
                     error_result = AnalysisResult(
                         record_id=job.request_data.record_id,
@@ -148,9 +161,10 @@ class AnalysisWorker:
                     # Always store result for polling
                     self.job_queue.store_result(job.job_id, error_result)
                     
-                    # Send webhook if URL provided
-                    if job.request_data.webhook_url and job.request_data.webhook_url.strip():
-                        await self._send_webhook(job.request_data.webhook_url, error_result)
+                    # Send notification webhook for failed job
+                    if self.coda_webhook_url and self.coda_api_token:
+                        await self._send_coda_webhook_notification(job.job_id, "FAILED")
+                        
                 except Exception as webhook_error:
                     logger.error(f"Failed to send error webhook: {webhook_error}")
     
@@ -164,8 +178,55 @@ class AnalysisWorker:
         header = "="*50 + " COMBINED ANALYSIS RESULTS " + "="*50 + "\n\n"
         return header + separator.join(results)
     
-    async def _send_webhook(self, webhook_url: str, result: AnalysisResult, max_retries: int = 3) -> bool:
-        """Send result to Coda via webhook with retry logic"""
+    async def _send_coda_webhook_notification(self, job_id: str, status: str, max_retries: int = 3) -> bool:
+        """
+        NEW: Send simple notification webhook to Coda automation
+        Just notifies that analysis is complete - Coda fetches data via CheckResults
+        """
+        if not self.coda_webhook_url or not self.coda_api_token:
+            logger.warning("Coda webhook URL or API token not configured")
+            return True  # Don't fail job if webhook not configured
+        
+        for attempt in range(max_retries):
+            try:
+                # Simple notification payload - just job_id and status
+                notification_payload = {
+                    "job_id": job_id,
+                    "status": "complete" if status == "SUCCESS" else "failed"
+                }
+                
+                timeout = aiohttp.ClientTimeout(total=30)
+                headers = {
+                    "Authorization": f"Bearer {self.coda_api_token}",
+                    "Content-Type": "application/json"
+                }
+                
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(
+                        self.coda_webhook_url,
+                        json=notification_payload,
+                        headers=headers
+                    ) as response:
+                        if response.status in [200, 202]:  # Accept both OK and Accepted
+                            logger.info(f"Coda webhook notification sent successfully for job {job_id}")
+                            return True
+                        else:
+                            response_text = await response.text()
+                            logger.warning(f"Coda webhook failed with status {response.status}: {response_text}, attempt {attempt + 1}")
+                            
+            except Exception as e:
+                logger.error(f"Coda webhook error (attempt {attempt + 1}): {e}")
+            
+            # Wait before retry (exponential backoff)
+            if attempt < max_retries - 1:
+                wait_time = (2 ** attempt) * 2
+                await asyncio.sleep(wait_time)
+        
+        logger.error(f"Coda webhook notification failed for job {job_id} after {max_retries} attempts")
+        return False
+    
+    async def _send_legacy_webhook(self, webhook_url: str, result: AnalysisResult, max_retries: int = 3) -> bool:
+        """Send legacy webhook with full data (for backward compatibility)"""
         for attempt in range(max_retries):
             try:
                 timeout = aiohttp.ClientTimeout(total=30)
@@ -174,13 +235,13 @@ class AnalysisWorker:
                     
                     async with session.post(webhook_url, json=payload) as response:
                         if response.status == 200:
-                            logger.info(f"Webhook sent successfully for record {result.record_id}")
+                            logger.info(f"Legacy webhook sent successfully for record {result.record_id}")
                             return True
                         else:
-                            logger.warning(f"Webhook failed with status {response.status}, attempt {attempt + 1}")
+                            logger.warning(f"Legacy webhook failed with status {response.status}, attempt {attempt + 1}")
                             
             except Exception as e:
-                logger.error(f"Webhook error (attempt {attempt + 1}): {e}")
+                logger.error(f"Legacy webhook error (attempt {attempt + 1}): {e}")
             
             # Wait before retry (exponential backoff)
             if attempt < max_retries - 1:
