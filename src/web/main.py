@@ -4,11 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 import uuid
 import time
 import logging
+import asyncio
 
-from src.shared.models import AnalysisRequest, JobStatus, AnalysisJob
+from src.shared.models import AnalysisRequest, JobStatus, AnalysisJob, PollingRequest
 from src.shared.config import get_settings
 from src.shared.logging import setup_logging
 from src.worker.job_queue import JobQueue
+from src.worker.chunking import ContentChunker
+from src.worker.claude import ClaudeService
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -29,8 +32,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize job queue
+# Initialize services
 job_queue = JobQueue(settings.queue_url)
+claude_service = ClaudeService(settings.claude_api_key)
+chunker = ContentChunker()
 
 @app.get("/health")
 async def health_check():
@@ -46,6 +51,131 @@ async def health_check():
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=503, detail="Service unhealthy")
+
+# =================== POLLING ENDPOINTS ===================
+
+@app.post("/request")
+async def start_analysis(request: PollingRequest):
+    """
+    NEW: Start analysis - try synchronous first, fallback to async
+    """
+    try:
+        # Validate request
+        if not request.content or len(request.content.strip()) == 0:
+            raise HTTPException(status_code=400, detail="Content cannot be empty")
+        
+        if not request.user_prompt or len(request.user_prompt.strip()) == 0:
+            raise HTTPException(status_code=400, detail="User prompt cannot be empty")
+        
+        if len(request.content) > settings.max_content_size:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Content exceeds maximum size of {settings.max_content_size} characters"
+            )
+        
+        # Generate job ID
+        job_id = str(uuid.uuid4())
+        
+        # Try synchronous processing first (40 second timeout)
+        try:
+            async with asyncio.timeout(40):
+                # Quick analysis for small content
+                if len(request.content) < 10000:  # Small content threshold
+                    chunks = chunker.chunk_content(request.content, request.user_prompt)
+                    if len(chunks) == 1:  # Single chunk - try sync
+                        try:
+                            result = await claude_service.process_chunk(chunks[0], request)
+                            analysis_name = await claude_service.generate_analysis_name(result)
+                            
+                            return {
+                                "job_id": job_id,
+                                "status": "complete",
+                                "analysis_result": result,
+                                "analysis_name": analysis_name,
+                                "processing_time_seconds": "immediate"
+                            }
+                        except Exception as sync_error:
+                            logger.warning(f"Sync processing failed, falling back to async: {sync_error}")
+                            # Fall through to async processing
+        except asyncio.TimeoutError:
+            logger.info("Sync processing timed out, falling back to async")
+            pass  # Fall through to async processing
+        except Exception as e:
+            logger.warning(f"Sync processing error, falling back to async: {e}")
+            pass  # Fall through to async processing
+        
+        # Async processing for large content or timeout
+        job = AnalysisJob(
+            job_id=job_id,
+            record_id=request.record_id,
+            status=JobStatus.PENDING,
+            request_data=request.to_analysis_request(),  # Convert to AnalysisRequest
+            created_at=time.time()
+        )
+        
+        # Queue for background processing
+        job_queue.enqueue_job(job)
+        
+        return {
+            "job_id": job_id,
+            "status": "processing",
+            "message": "Analysis queued for background processing",
+            "estimated_time": "2-10 minutes depending on content size"
+        }
+        
+    except Exception as e:
+        logger.error(f"Analysis request failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/response/{job_id}")
+async def get_analysis_result(job_id: str):
+    """
+    NEW: Get analysis results by job ID
+    """
+    try:
+        # Check if job exists in storage
+        job = job_queue.get_job(job_id)
+        
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        if job.status == JobStatus.SUCCESS:
+            # Retrieve completed results from storage
+            result = job_queue.get_job_result(job_id)
+            if result:
+                return {
+                    "job_id": job_id,
+                    "status": "complete",
+                    "analysis_result": result.analysis_result,
+                    "analysis_name": result.analysis_name,
+                    "processing_stats": result.processing_stats
+                }
+            else:
+                # Job marked success but no result - data issue
+                return {
+                    "job_id": job_id,
+                    "status": "failed",
+                    "error_message": "Analysis completed but result data not found"
+                }
+        elif job.status == JobStatus.FAILED:
+            return {
+                "job_id": job_id,
+                "status": "failed",
+                "error_message": job.error_message or "Analysis failed"
+            }
+        else:
+            # Still processing
+            return {
+                "job_id": job_id,
+                "status": "processing",
+                "message": "Analysis still in progress"
+            }
+            
+    except Exception as e:
+        logger.error(f"Result retrieval failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =================== WEBHOOK ENDPOINTS (EXISTING) ===================
 
 @app.post("/analyze")
 async def process_analysis(request: AnalysisRequest):

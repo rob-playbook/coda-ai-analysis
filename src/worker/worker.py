@@ -101,20 +101,30 @@ class AnalysisWorker:
                 }
             )
             
-            success = await self._send_webhook(request_data.webhook_url, final_result)
+            # Store result for polling access
+            self.job_queue.store_result(job.job_id, final_result)
             
-            if success:
+            # Send webhook if URL provided
+            if request_data.webhook_url and request_data.webhook_url.strip():
+                success = await self._send_webhook(request_data.webhook_url, final_result)
+                
+                if success:
+                    job.status = JobStatus.SUCCESS
+                    self.job_queue.complete_job(job)
+                    logger.info(f"Job {job.job_id} completed successfully in {processing_time:.2f}s")
+                else:
+                    # Webhook failed - retry job if possible
+                    if job.retry_count < job.max_retries:
+                        self.job_queue.retry_job(job)
+                        logger.warning(f"Job {job.job_id} webhook failed, queued for retry")
+                    else:
+                        self.job_queue.fail_job(job, "Webhook delivery failed after max retries")
+                        logger.error(f"Job {job.job_id} failed - webhook delivery failed")
+            else:
+                # No webhook - polling only, mark as complete
                 job.status = JobStatus.SUCCESS
                 self.job_queue.complete_job(job)
-                logger.info(f"Job {job.job_id} completed successfully in {processing_time:.2f}s")
-            else:
-                # Webhook failed - retry job if possible
-                if job.retry_count < job.max_retries:
-                    self.job_queue.retry_job(job)
-                    logger.warning(f"Job {job.job_id} webhook failed, queued for retry")
-                else:
-                    self.job_queue.fail_job(job, "Webhook delivery failed after max retries")
-                    logger.error(f"Job {job.job_id} failed - webhook delivery failed")
+                logger.info(f"Job {job.job_id} completed successfully in {processing_time:.2f}s (polling mode)")
             
         except Exception as e:
             error_message = f"Job processing failed: {str(e)}"
@@ -127,7 +137,7 @@ class AnalysisWorker:
             else:
                 self.job_queue.fail_job(job, error_message)
                 
-                # Try to send error webhook to Coda
+                # Store error result and try to send error webhook if URL provided
                 try:
                     error_result = AnalysisResult(
                         record_id=job.request_data.record_id,
@@ -135,7 +145,12 @@ class AnalysisWorker:
                         error_message=error_message,
                         processing_stats={"job_id": job.job_id, "error": True}
                     )
-                    await self._send_webhook(job.request_data.webhook_url, error_result)
+                    # Always store result for polling
+                    self.job_queue.store_result(job.job_id, error_result)
+                    
+                    # Send webhook if URL provided
+                    if job.request_data.webhook_url and job.request_data.webhook_url.strip():
+                        await self._send_webhook(job.request_data.webhook_url, error_result)
                 except Exception as webhook_error:
                     logger.error(f"Failed to send error webhook: {webhook_error}")
     

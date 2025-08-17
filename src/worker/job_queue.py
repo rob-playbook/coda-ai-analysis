@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from typing import Optional
-from src.shared.models import AnalysisJob, JobStatus
+from src.shared.models import AnalysisJob, JobStatus, AnalysisResult
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,7 @@ class JobQueue:
         self.job_queue_key = "analysis_jobs"
         self.job_data_key = "job_data:{job_id}"
         self.processing_key = "processing_jobs"
+        self.result_key = "result:{job_id}"
         
     def ping(self) -> bool:
         """Test queue connectivity"""
@@ -143,3 +144,27 @@ class JobQueue:
         except Exception as e:
             logger.error(f"Failed to retry job {job.job_id}: {e}")
             return False
+    
+    def store_result(self, job_id: str, result: AnalysisResult) -> bool:
+        """Store completed analysis result for polling retrieval"""
+        try:
+            result_key = self.result_key.format(job_id=job_id)
+            self.redis.setex(result_key, 86400, result.json())  # 24 hour expiry
+            logger.info(f"Result stored for job: {job_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to store result for job {job_id}: {e}")
+            return False
+    
+    def get_job_result(self, job_id: str) -> Optional[AnalysisResult]:
+        """Retrieve analysis result by job ID"""
+        try:
+            result_key = self.result_key.format(job_id=job_id)
+            result_data = self.redis.get(result_key)
+            
+            if result_data:
+                return AnalysisResult.parse_raw(result_data)
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get result for job {job_id}: {e}")
+            return None

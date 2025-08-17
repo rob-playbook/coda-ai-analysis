@@ -32,6 +32,47 @@ class AnalysisRequest(BaseModel):
     template_config: Optional[Dict[str, Any]] = Field(default=None, description="Template metadata")
     project_metadata: Optional[Dict[str, Any]] = Field(default=None, description="Project metadata")
 
+class PollingRequest(BaseModel):
+    """Request model for polling endpoints (no webhook required)"""
+    record_id: str = Field(..., description="Coda record ID for tracking")
+    content: str = Field(..., description="Content to analyze")
+    
+    # PRE-BUILT PROMPTS FROM CODA
+    system_prompt: Optional[str] = Field(default=None, description="Complete system prompt built by Coda")
+    user_prompt: str = Field(..., description="Complete user prompt built by Coda")
+    
+    # API CONFIGURATION
+    model: str = Field(default="claude-3-5-sonnet-20241022", description="Claude model to use")
+    max_tokens: int = Field(default=2000, description="Maximum tokens")
+    temperature: float = Field(default=0.2, description="Temperature setting")
+    
+    # EXTENDED THINKING SUPPORT
+    extended_thinking: bool = Field(default=False, description="Enable extended thinking")
+    thinking_budget: Optional[int] = Field(default=None, description="Thinking budget tokens")
+    include_thinking: bool = Field(default=False, description="Include thinking in response")
+    
+    # OPTIONAL METADATA
+    template_config: Optional[Dict[str, Any]] = Field(default=None, description="Template metadata")
+    project_metadata: Optional[Dict[str, Any]] = Field(default=None, description="Project metadata")
+    
+    def to_analysis_request(self) -> 'AnalysisRequest':
+        """Convert to AnalysisRequest for background processing"""
+        return AnalysisRequest(
+            record_id=self.record_id,
+            content=self.content,
+            system_prompt=self.system_prompt,
+            user_prompt=self.user_prompt,
+            model=self.model,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            extended_thinking=self.extended_thinking,
+            thinking_budget=self.thinking_budget,
+            include_thinking=self.include_thinking,
+            webhook_url="",  # Not used for polling
+            template_config=self.template_config,
+            project_metadata=self.project_metadata
+        )
+
 class AnalysisJob(BaseModel):
     job_id: str
     record_id: str
