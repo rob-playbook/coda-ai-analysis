@@ -65,12 +65,16 @@ class ClaudeService:
             logger.info(f"Calling Claude API with {len(chunk_content)} characters")
             start_time = time.time()
             
-            # Add beta headers for extended thinking if enabled
-            extra_headers = {}
+            # Use appropriate client call based on extended thinking
             if request_data.extended_thinking:
-                extra_headers["anthropic-beta"] = "extended-thinking-2025-01-15"
-            
-            response = self.client.messages.create(**api_params, extra_headers=extra_headers)
+                # Use beta.messages.create for extended thinking
+                response = self.client.beta.messages.create(
+                    **api_params,
+                    extra_headers={"anthropic-beta": "extended-thinking-2025-01-15"}
+                )
+            else:
+                # Use regular messages.create for normal operation
+                response = self.client.messages.create(**api_params)
             
             end_time = time.time()
             result = response.content[0].text
