@@ -174,14 +174,12 @@ class AnalysisWorker:
                     logger.error(f"Failed to send error webhook: {webhook_error}")
     
     def _combine_chunk_results(self, results: list) -> str:
-        """Combine chunk results maintaining readability and context"""
+        """Combine chunk results with clean separators for consistency processing"""
         if len(results) == 1:
             return results[0]
         
-        # For multiple chunks, combine with clear separators
-        separator = "\n\n" + "="*50 + " CHUNK SEPARATOR " + "="*50 + "\n\n"
-        header = "="*50 + " COMBINED ANALYSIS RESULTS " + "="*50 + "\n\n"
-        return header + separator.join(results)
+        # Simple joining - let consistency check handle proper merging
+        return "\n\n".join(results)
     
     async def _send_coda_webhook_notification(self, job_id: str, status: str, max_retries: int = 3) -> bool:
         """

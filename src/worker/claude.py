@@ -167,11 +167,11 @@ Response to analyze: {analysis_result[:1500]}"""
     async def ensure_format_consistency(self, combined_result: str) -> str:
         """Ensure consistent formatting across all chunks"""
         try:
-            consistency_prompt = f"""Review this analysis result and ensure ALL content follows the same formatting structure throughout. 
+            consistency_prompt = f"""Rewrite this entire analysis with consistent formatting throughout. Return the COMPLETE analysis with every single piece of content.
             
-If you see content blocks using a specific format (like <content> tags), make sure ALL similar content uses that exact same format. Do not change the meaning or content, only ensure consistent formatting.
+Ensure all content blocks use the same format structure. If you see content blocks using a specific format (like <content> tags), make sure ALL similar content uses that exact same format.
             
-Analysis to format consistently:
+Return the full reformatted analysis:
 {combined_result}"""
             
             response = self.client.messages.create(
