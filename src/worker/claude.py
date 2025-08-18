@@ -23,6 +23,8 @@ class ClaudeService:
         """
         try:
             # Build API parameters from Coda's pre-built prompts
+            user_content = self._inject_content_into_user_prompt(request_data.user_prompt, chunk_content)
+            
             api_params = {
                 "model": request_data.model,
                 "max_tokens": min(request_data.max_tokens, 8192),
@@ -30,10 +32,7 @@ class ClaudeService:
                 "messages": [
                     {
                         "role": "user", 
-                        "content": self._inject_content_into_user_prompt(
-                            request_data.user_prompt, 
-                            chunk_content
-                        )
+                        "content": user_content
                     }
                 ]
             }
@@ -41,6 +40,13 @@ class ClaudeService:
             # Add system prompt if provided by Coda
             if request_data.system_prompt:
                 api_params["system"] = request_data.system_prompt
+                logger.info(f"System prompt being sent: {request_data.system_prompt}")
+            else:
+                logger.info("No system prompt provided")
+            
+            # Log the user prompt being sent
+            logger.info(f"User prompt being sent (first 500 chars): {user_content[:500]}...")
+            logger.info(f"Original user_prompt from Coda: {request_data.user_prompt[:200]}...")
             
             # Extended thinking support
             if request_data.extended_thinking:
@@ -169,11 +175,14 @@ Response to analyze: {analysis_result[:1500]}"""
         """Ensure consistent formatting across all chunks"""
         try:
             logger.info(f"Starting consistency check using model: {request_data.model}")
-            consistency_prompt = f"""Fix the formatting inconsistencies in this analysis. Ensure all content blocks use the same format structure throughout.
+            consistency_prompt = f"""You previously processed this request in chunks. Here was the original prompt:
+{request_data.user_prompt}
+
+Now rewrite this entire analysis with consistent formatting throughout, following the original requirements. Return the COMPLETE analysis with every single piece of content.
 
 Do not add, remove, or modify any analysis content - only fix formatting inconsistencies.
 
-Return the COMPLETE analysis with every single piece of content:
+Return the full reformatted analysis:
 {combined_result}"""
             
             response = self.client.messages.create(
