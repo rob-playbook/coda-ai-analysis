@@ -23,8 +23,6 @@ class ClaudeService:
         """
         try:
             # Build API parameters from Coda's pre-built prompts
-            user_content = self._inject_content_into_user_prompt(request_data.user_prompt, chunk_content)
-            
             api_params = {
                 "model": request_data.model,
                 "max_tokens": min(request_data.max_tokens, 8192),
@@ -32,7 +30,10 @@ class ClaudeService:
                 "messages": [
                     {
                         "role": "user", 
-                        "content": user_content
+                        "content": self._inject_content_into_user_prompt(
+                            request_data.user_prompt, 
+                            chunk_content
+                        )
                     }
                 ]
             }
@@ -40,13 +41,6 @@ class ClaudeService:
             # Add system prompt if provided by Coda
             if request_data.system_prompt:
                 api_params["system"] = request_data.system_prompt
-                logger.info(f"System prompt being sent: {request_data.system_prompt}")
-            else:
-                logger.info("No system prompt provided")
-            
-            # Log the user prompt being sent
-            logger.info(f"User prompt being sent (first 500 chars): {user_content[:500]}...")
-            logger.info(f"Original user_prompt from Coda: {request_data.user_prompt[:200]}...")
             
             # Extended thinking support
             if request_data.extended_thinking:
