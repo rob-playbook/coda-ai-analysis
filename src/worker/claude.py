@@ -168,13 +168,13 @@ Response to analyze: {analysis_result[:1500]}"""
     async def ensure_format_consistency(self, combined_result: str, request_data: Any) -> str:
         """Ensure consistent formatting across all chunks"""
         try:
-            logger.info("Starting consistency check using model: claude-3-haiku-20240307")
+logger.info(f"Starting consistency check using model: {request_data.model}")
             consistency_prompt = f"""You previously processed this request in chunks. Here was the original prompt:
 {request_data.user_prompt}
 
 Now rewrite this entire analysis with consistent formatting throughout, following the original requirements. Return the COMPLETE analysis with every single piece of content.
 
-Do not add, remove, or modify any analysis content - only fix formatting inconsistencies.
+Do not add, remove, or modify any content - only fix formatting inconsistencies.
 
 Return the full reformatted analysis:
 {combined_result}"""
