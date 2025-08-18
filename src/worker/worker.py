@@ -90,6 +90,11 @@ class AnalysisWorker:
             # Step 3: Combine results
             combined_result = self._combine_chunk_results(results)
             
+            # Step 3.5: Ensure format consistency for multi-chunk results
+            if chunk_count > 1:
+                logger.info(f"Ensuring format consistency for {chunk_count} chunks")
+                combined_result = await self.claude_service.ensure_format_consistency(combined_result)
+            
             # Step 4: Quality assessment
             quality_status = await self.claude_service.assess_quality(combined_result)
             

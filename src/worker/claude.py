@@ -164,6 +164,29 @@ Response to analyze: {analysis_result[:1500]}"""
             logger.error(f"Quality assessment failed: {e}")
             return "SUCCESS"
     
+    async def ensure_format_consistency(self, combined_result: str) -> str:
+        """Ensure consistent formatting across all chunks"""
+        try:
+            consistency_prompt = f"""Review this analysis result and ensure ALL content follows the same formatting structure throughout. 
+            
+If you see content blocks using a specific format (like <content> tags), make sure ALL similar content uses that exact same format. Do not change the meaning or content, only ensure consistent formatting.
+            
+Analysis to format consistently:
+{combined_result}"""
+            
+            response = self.client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=8192,
+                temperature=0.1,
+                messages=[{"role": "user", "content": consistency_prompt}]
+            )
+            
+            return response.content[0].text.strip()
+            
+        except Exception as e:
+            logger.error(f"Format consistency check failed: {e}")
+            return combined_result  # Return original if consistency check fails
+    
     async def generate_analysis_name(self, analysis_result: str) -> str:
         """Generate concise analysis name using Claude"""
         try:
