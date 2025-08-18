@@ -62,7 +62,7 @@ class ClaudeService:
                 
                 logger.info(f"Extended thinking enabled with budget: {api_params['thinking']['budget_tokens']}")
             
-            logger.info(f"Calling Claude API with {len(chunk_content)} characters")
+            logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
             start_time = time.time()
             
             # Use appropriate client call based on extended thinking
@@ -137,6 +137,7 @@ class ClaudeService:
     async def assess_quality(self, analysis_result: str) -> str:
         """Assess quality of analysis result using separate Claude call"""
         try:
+            logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
             assessment_prompt = f"""Analyze this AI response and determine if it successfully completed the requested analysis. Respond with exactly one word: SUCCESS or FAILED.
 
 SUCCESS = The response provides meaningful analysis, insights, or results relevant to the request.
@@ -167,6 +168,7 @@ Response to analyze: {analysis_result[:1500]}"""
     async def ensure_format_consistency(self, combined_result: str, request_data: Any) -> str:
         """Ensure consistent formatting across all chunks"""
         try:
+            logger.info("Starting consistency check using model: claude-3-haiku-20240307")
             consistency_prompt = f"""You previously processed this request in chunks. Here was the original prompt:
 {request_data.user_prompt}
 
@@ -193,6 +195,7 @@ Return the full reformatted analysis:
     async def generate_analysis_name(self, analysis_result: str) -> str:
         """Generate concise analysis name using Claude"""
         try:
+            logger.info("Starting name generation using model: claude-3-haiku-20240307")
             name_prompt = f"Generate a single professional title (5-7 words only, no extra text) for the following analysis: {analysis_result[:1500]}"
             
             response = self.client.messages.create(
