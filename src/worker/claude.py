@@ -178,7 +178,7 @@ Return the full reformatted analysis:
 {combined_result}"""
             
             response = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-3-haiku-20240307",
                 max_tokens=8192,
                 temperature=0.1,
                 messages=[{"role": "user", "content": consistency_prompt}]
@@ -196,7 +196,7 @@ Return the full reformatted analysis:
             name_prompt = f"Generate a single professional title (5-7 words only, no extra text) for the following analysis: {analysis_result[:1500]}"
             
             response = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-3-haiku-20240307",
                 max_tokens=30,
                 temperature=0.1,
                 messages=[{"role": "user", "content": name_prompt}]
