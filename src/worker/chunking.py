@@ -15,20 +15,29 @@ class ContentChunker:
             # Fallback to basic tokenizer
             self.encoder = tiktoken.get_encoding("cl100k_base")
         
-        self.max_tokens = 11000  # Conservative limit for Claude context
+        self.max_tokens = 11000  # Conservative limit for multi-chunk scenarios
         self.overlap_tokens = 200  # Maintain context between chunks
+        self.single_chunk_threshold = 150000  # 150K tokens ≈ 555K characters
         
     def chunk_content(self, content: str, user_prompt: str = "") -> List[str]:
         """
-        Smart content chunking - only chunks the CONTENT, not the prompts
-        Coda handles all prompt construction
+        Smart content chunking with high threshold - only chunks very large content
+        Most content will be processed as a single chunk
         """
         try:
-            # Estimate tokens for user prompt to reserve space
+            # Calculate total token requirements
+            content_tokens = len(self.encoder.encode(content))
             prompt_tokens = len(self.encoder.encode(user_prompt)) if user_prompt else 1000
+            total_tokens = content_tokens + prompt_tokens + 500  # Safety buffer
             
-            # Adjust max tokens to account for prompt overhead
-            available_tokens = self.max_tokens - prompt_tokens - 500  # Safety buffer
+            # Check if content fits within single chunk threshold
+            if total_tokens < self.single_chunk_threshold:
+                logger.info(f"Content fits in single chunk ({total_tokens:,} tokens < {self.single_chunk_threshold:,}), skipping chunking")
+                return [content]
+            
+            # Content is very large - use chunking with larger chunk sizes
+            logger.info(f"Content requires chunking ({total_tokens:,} tokens > {self.single_chunk_threshold:,})")
+            available_tokens = 25000 - prompt_tokens - 500  # Larger chunks for multi-chunk scenarios
             
             if available_tokens <= 1000:
                 logger.warning(f"Very little space left for content after prompt: {available_tokens} tokens")
