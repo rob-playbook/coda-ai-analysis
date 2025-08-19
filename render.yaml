@@ -29,3 +29,7 @@ services:
         sync: false
       - key: LOG_LEVEL
         value: INFO
+      - key: CODA_WEBHOOK_URL
+        sync: false
+      - key: CODA_API_TOKEN
+        sync: false
