@@ -1,0 +1,26 @@
+{
+  "name": "grid-api-coda-pack",
+  "version": "1.0.0",
+  "description": "GRID API - Connect Coda to Render service for unlimited AI analysis processing",
+  "main": "pack.ts",
+  "scripts": {
+    "build": "npx coda build pack.ts",
+    "validate": "npx coda validate pack.ts",
+    "execute": "npx coda execute pack.ts",
+    "upload": "npx coda upload pack.ts"
+  },
+  "dependencies": {
+    "@codahq/packs-sdk": "^1.10.1"
+  },
+  "keywords": [
+    "coda",
+    "pack",
+    "ai",
+    "analysis",
+    "render",
+    "claude",
+    "grid"
+  ],
+  "author": "Rob Manzano",
+  "license": "MIT"
+}

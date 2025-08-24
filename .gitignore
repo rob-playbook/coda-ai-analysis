@@ -98,9 +98,11 @@ __marimo__/
 
 # =================== PROJECT SPECIFIC EXCLUDES ===================
 
-# Coda Pack Development (exclude entire directory)
-coda-pack/
-*.coda
+# FIXED: Include Coda Pack source files in Git (prevent this issue from happening again)
+# Only exclude node_modules and build artifacts (keep .coda-pack.json for pack ID)
+coda-pack/node_modules/
+coda-pack/build/
+coda-pack/dist/
 
 # Test and temporary files
 test_*.py
@@ -137,3 +139,11 @@ Desktop.ini
 # ✅ README.md
 # ✅ Documentation markdown files
 # ✅ .gitignore (this file)
+
+# =================== CODA PACK FILES (INCLUDE THESE NOW) ===================
+# CRITICAL: Pack source files are now tracked in Git to prevent loss
+# ✅ coda-pack/pack.ts (main pack source)
+# ✅ coda-pack/package.json (pack configuration)
+# ✅ coda-pack/README.md (pack documentation)
+# ❌ coda-pack/node_modules/ (excluded above)
+# ❌ coda-pack/.coda-pack.json (local config, excluded above)
