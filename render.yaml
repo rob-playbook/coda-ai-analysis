@@ -14,7 +14,7 @@ services:
       - key: LOG_LEVEL
         value: INFO
       - key: MAX_CONTENT_SIZE
-        value: "100000"
+        value: "500000"
     
   - type: worker
     name: coda-ai-worker
