@@ -26,7 +26,6 @@ class ClaudeService:
             api_params = {
                 "model": request_data.model,
                 "max_tokens": min(request_data.max_tokens, 8192),
-                "temperature": max(0.0, min(1.0, request_data.temperature)),
                 "messages": [
                     {
                         "role": "user", 
@@ -50,8 +49,14 @@ class ClaudeService:
                     "budget_tokens": max(1024, min(thinking_budget, request_data.max_tokens - 200))
                 }
                 
-                logger.info(f"Extended thinking enabled with budget: {api_params['thinking']['budget_tokens']}")
+                # IMPORTANT: Claude API requires temperature=1 when thinking is enabled
+                api_params["temperature"] = 1.0
+                
+                logger.info(f"Extended thinking enabled with budget: {api_params['thinking']['budget_tokens']}, temperature forced to 1.0")
                 # NOTE: include_thinking is NOT sent to Claude API - it's used for post-processing
+            else:
+                # Use requested temperature for normal operation
+                api_params["temperature"] = max(0.0, min(1.0, request_data.temperature))
             
             logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
             start_time = time.time()
