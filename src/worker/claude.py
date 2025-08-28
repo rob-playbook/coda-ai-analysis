@@ -44,17 +44,12 @@ class ClaudeService:
             
             # Extended thinking support
             if request_data.extended_thinking:
-                # Add thinking parameter for Claude API
-                api_params["thinking"] = {"type": "enabled"}
-                
-                # Set thinking budget if provided
-                if request_data.thinking_budget:
-                    api_params["thinking"]["budget_tokens"] = max(
-                        1024, 
-                        min(request_data.thinking_budget, request_data.max_tokens - 200)
-                    )
-                else:
-                    api_params["thinking"]["budget_tokens"] = 2048  # Default thinking budget
+                # CORRECT: Flat structure with budget_tokens
+                thinking_budget = request_data.thinking_budget or 2048
+                api_params["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": max(1024, min(thinking_budget, request_data.max_tokens - 200))
+                }
                 
                 # Include thinking in response if requested
                 if request_data.include_thinking:
@@ -67,10 +62,10 @@ class ClaudeService:
             
             # Use appropriate client call based on extended thinking
             if request_data.extended_thinking:
-                # Use beta.messages.create for extended thinking
+                # Use beta.messages.create with betas parameter
                 response = self.client.beta.messages.create(
                     **api_params,
-                    extra_headers={"anthropic-beta": "extended-thinking-2025-01-15"}
+                    betas=["extended-thinking-2025-01-15"]
                 )
             else:
                 # Use regular messages.create for normal operation
