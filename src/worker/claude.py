@@ -44,7 +44,6 @@ class ClaudeService:
             
             # Extended thinking support
             if request_data.extended_thinking:
-                # CORRECT: Flat structure with budget_tokens
                 thinking_budget = request_data.thinking_budget or 2048
                 api_params["thinking"] = {
                     "type": "enabled",
@@ -60,16 +59,8 @@ class ClaudeService:
             logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
             start_time = time.time()
             
-            # Use appropriate client call based on extended thinking
-            if request_data.extended_thinking:
-                # Use beta.messages.create with betas parameter
-                response = self.client.beta.messages.create(
-                    **api_params,
-                    betas=["extended-thinking-2025-01-15"]
-                )
-            else:
-                # Use regular messages.create for normal operation
-                response = self.client.messages.create(**api_params)
+            # Use regular messages.create for all requests (SDK 0.64+ supports thinking parameter)
+            response = self.client.messages.create(**api_params)
             
             end_time = time.time()
             result = response.content[0].text
