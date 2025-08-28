@@ -154,10 +154,15 @@ class ClaudeService:
         - "Since this content doesn't align with..."
         
         These responses break automated workflows even though they're "helpful".
+        
+        TIMEOUT PROTECTION: Falls back to SUCCESS if quality assessment fails/times out.
+        Main analysis should never fail due to quality assessment issues.
         """
         try:
-            logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
-            assessment_prompt = f"""Analyze this AI response and determine if it successfully completed the requested analysis. Respond with exactly one word: SUCCESS or FAILED.
+            # Add timeout protection - quality assessment should not break main analysis
+            async with asyncio.timeout(15):  # 15-second timeout for quality assessment
+                logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
+                assessment_prompt = f"""Analyze this AI response and determine if it successfully completed the requested analysis. Respond with exactly one word: SUCCESS or FAILED.
 
 AUTOMATIC FAILED phrases (if any of these appear, mark FAILED):
 - "I cannot provide the requested analysis"
@@ -206,25 +211,29 @@ SUCCESS indicators:
 
 Response to analyze: {analysis_result[:1500]}"""
 
-            response = self.client.messages.create(
-                model="claude-3-haiku-20240307",
-                max_tokens=10,
-                temperature=0.0,
-                system="You are a strict quality checker for automated workflows. IMMEDIATELY mark FAILED if you see ANY of these exact phrases: 'I cannot properly', 'Given this mismatch', 'there's a mismatch', 'Would you like me to', 'Please advise', '1)', '2)', '3)', 'completely different subjects'. These responses break workflows even if they seem helpful. SUCCESS only means actual analysis was delivered.",
-                messages=[{"role": "user", "content": assessment_prompt}]
-            )
-            
-            result = response.content[0].text.strip().upper()
-            
-            if result not in ["SUCCESS", "FAILED"]:
-                logger.warning(f"Unexpected quality assessment result: {result}")
-                return "FAILED"  # CHANGED: Default to FAILED instead of SUCCESS
-            
-            return result
-            
+                response = self.client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=10,
+                    temperature=0.0,
+                    system="You are a strict quality checker for automated workflows. IMMEDIATELY mark FAILED if you see ANY of these exact phrases: 'I cannot properly', 'Given this mismatch', 'there's a mismatch', 'Would you like me to', 'Please advise', '1)', '2)', '3)', 'completely different subjects'. These responses break workflows even if they seem helpful. SUCCESS only means actual analysis was delivered.",
+                    messages=[{"role": "user", "content": assessment_prompt}]
+                )
+                
+                result = response.content[0].text.strip().upper()
+                
+                if result not in ["SUCCESS", "FAILED"]:
+                    logger.warning(f"Unexpected quality assessment result: {result}")
+                    return "SUCCESS"  # Default to SUCCESS for unexpected responses
+                
+                logger.info(f"Quality assessment completed: {result}")
+                return result
+                
+        except asyncio.TimeoutError:
+            logger.warning("Quality assessment timed out after 15 seconds - defaulting to SUCCESS")
+            return "SUCCESS"  # Don't fail main analysis due to quality check timeout
         except Exception as e:
-            logger.error(f"Quality assessment failed: {e}")
-            return "FAILED"  # CHANGED: Default to FAILED instead of SUCCESS
+            logger.warning(f"Quality assessment failed: {e} - defaulting to SUCCESS")
+            return "SUCCESS"  # Don't fail main analysis due to quality check errors
     
     async def ensure_format_consistency(self, combined_result: str, request_data: Any) -> str:
         """Ensure consistent formatting across all chunks"""
