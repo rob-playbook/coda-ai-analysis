@@ -162,15 +162,31 @@ class ClaudeService:
 AUTOMATIC FAILED phrases (if any of these appear, mark FAILED):
 - "I cannot provide the requested analysis"
 - "I cannot provide the"
+- "I cannot properly"
+- "I cannot enhance"
+- "I cannot create"
+- "Given this mismatch, I cannot"
 - "doesn't match what I expected"
 - "doesn't align with"
+- "there's a complete mismatch"
+- "there's a mismatch"
+- "appears to be a mismatch"
 - "Would you like me to:"
 - "Would you like me to"
+- "Please advise on how"
+- "Please advise"
 - "Wait for you to provide"
 - "appears to be about X rather than Y"
 - "seems to be a mismatch"
 - "There seems to be"
 - "Since this content doesn't"
+- "these are completely different subjects"
+- "no overlap"
+- "completely different"
+- "significant mismatch"
+- "1)"
+- "2)"
+- "3)"
 
 Other FAILED indicators:
 - Contains error messages or error codes
@@ -194,7 +210,7 @@ Response to analyze: {analysis_result[:1500]}"""
                 model="claude-3-haiku-20240307",
                 max_tokens=10,
                 temperature=0.0,
-                system="You are a quality checker for automated analysis workflows. Check for AUTOMATIC FAILED phrases first - if you see 'I cannot provide the requested analysis', 'Would you like me to', 'doesn't match what I expected', 'doesn't align with', or similar phrases, mark FAILED immediately. SUCCESS only if actual analysis results are delivered using the provided content, regardless of content type or perceived mismatches.",
+                system="You are a strict quality checker for automated workflows. IMMEDIATELY mark FAILED if you see ANY of these exact phrases: 'I cannot properly', 'Given this mismatch', 'there's a mismatch', 'Would you like me to', 'Please advise', '1)', '2)', '3)', 'completely different subjects'. These responses break workflows even if they seem helpful. SUCCESS only means actual analysis was delivered.",
                 messages=[{"role": "user", "content": assessment_prompt}]
             )
             
