@@ -50,11 +50,8 @@ class ClaudeService:
                     "budget_tokens": max(1024, min(thinking_budget, request_data.max_tokens - 200))
                 }
                 
-                # Include thinking in response if requested
-                if request_data.include_thinking:
-                    api_params["include_thinking"] = True
-                
                 logger.info(f"Extended thinking enabled with budget: {api_params['thinking']['budget_tokens']}")
+                # NOTE: include_thinking is NOT sent to Claude API - it's used for post-processing
             
             logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
             start_time = time.time()
@@ -63,7 +60,26 @@ class ClaudeService:
             response = self.client.messages.create(**api_params)
             
             end_time = time.time()
-            result = response.content[0].text
+            
+            # Process response content based on include_thinking flag
+            if request_data.extended_thinking and not request_data.include_thinking:
+                # Strip thinking blocks, keep only text blocks
+                text_blocks = [block.text for block in response.content if block.type == "text"]
+                result = "\n\n".join(text_blocks) if text_blocks else ""
+            else:
+                # Include everything (default behavior) - get all content as text
+                if len(response.content) == 1:
+                    # Single content block (normal case)
+                    result = response.content[0].text
+                else:
+                    # Multiple content blocks - join all text content
+                    all_text = []
+                    for block in response.content:
+                        if hasattr(block, 'text'):
+                            all_text.append(block.text)
+                        elif hasattr(block, 'thinking'):
+                            all_text.append(block.thinking)
+                    result = "\n\n".join(all_text)
             
             logger.info(f"Claude API responded in {end_time - start_time:.2f}s, returned {len(result)} characters")
             
