@@ -65,6 +65,27 @@ class AnalysisWorker:
         
         logger.info("Analysis worker stopped")
     
+    def _has_processing_errors(self, results: list) -> bool:
+        """Check if any results contain error messages"""
+        for result in results:
+            if result.startswith("[Error processing chunk"):
+                return True
+            if "Error code:" in result:
+                return True
+            if "error" in result.lower() and len(result.strip()) < 200:  # Short error messages
+                return True
+            if len(result.strip()) < 10:  # Suspiciously short
+                return True
+        return False
+    
+    def _extract_error_message(self, results: list) -> str:
+        """Extract error message from results"""
+        errors = []
+        for result in results:
+            if result.startswith("[Error processing chunk") or "Error code:" in result:
+                errors.append(result)
+        return "; ".join(errors) if errors else "Unknown processing error"
+    
     async def process_job(self, job: AnalysisJob):
         """Process a single analysis job"""
         logger.info(f"Processing job {job.job_id} for record {job.record_id}")
@@ -87,43 +108,67 @@ class AnalysisWorker:
                 chunks, request_data
             )
             
-            # Step 3: Combine results
-            combined_result = self._combine_chunk_results(results)
+            # Step 3: Check for processing errors BEFORE quality assessment
+            if self._has_processing_errors(results):
+                # Immediate failure for processing errors - don't waste API calls on quality assessment
+                quality_status = "FAILED"
+                analysis_name = "Processing Error"
+                error_message = self._extract_error_message(results)
+                
+                logger.error(f"Job {job.job_id} failed due to processing errors: {error_message}")
+                
+                # Store error result
+                processing_time = time.time() - start_time
+                final_result = AnalysisResult(
+                    record_id=request_data.record_id,
+                    status="FAILED",
+                    error_message=f"Analysis failed during processing: {error_message}",
+                    analysis_name="Processing Error",
+                    processing_stats={
+                        "job_id": job.job_id,
+                        "chunk_count": chunk_count,
+                        "processing_time_seconds": round(processing_time, 2),
+                        "failure_reason": "processing_error"
+                    }
+                )
+            else:
+                # Step 3: Combine results
+                combined_result = self._combine_chunk_results(results)
+                
+                # Step 3.5: Ensure format consistency for multi-chunk results
+                if chunk_count > 1:
+                    logger.info(f"Ensuring format consistency for {chunk_count} chunks")
+                    before_length = len(combined_result)
+                    logger.info(f"Before consistency check: {before_length} characters")
+                    combined_result = await self.claude_service.ensure_format_consistency(combined_result, request_data)
+                    after_length = len(combined_result)
+                    logger.info(f"After consistency check: {after_length} characters (diff: {after_length - before_length})") 
+                
+                # Step 4: Quality assessment (only for successful processing)
+                quality_status = await self.claude_service.assess_quality(combined_result)
+                
+                # Step 5: Generate analysis name (only for successful processing)
+                analysis_name = await self.claude_service.generate_analysis_name(combined_result)
+                
+                # Store successful result
+                processing_time = time.time() - start_time
+                final_result = AnalysisResult(
+                    record_id=request_data.record_id,
+                    status=quality_status,
+                    analysis_result=combined_result,
+                    analysis_name=analysis_name,
+                    processing_stats={
+                        "job_id": job.job_id,
+                        "chunk_count": chunk_count,
+                        "total_characters": len(combined_result),
+                        "processing_time_seconds": round(processing_time, 2)
+                    }
+                )
             
-            # Step 3.5: Ensure format consistency for multi-chunk results
-            if chunk_count > 1:
-                logger.info(f"Ensuring format consistency for {chunk_count} chunks")
-                before_length = len(combined_result)
-                logger.info(f"Before consistency check: {before_length} characters")
-                combined_result = await self.claude_service.ensure_format_consistency(combined_result, request_data)
-                after_length = len(combined_result)
-                logger.info(f"After consistency check: {after_length} characters (diff: {after_length - before_length})") 
-            
-            # Step 4: Quality assessment
-            quality_status = await self.claude_service.assess_quality(combined_result)
-            
-            # Step 5: Generate analysis name
-            analysis_name = await self.claude_service.generate_analysis_name(combined_result)
-            
-            # Step 6: Store results for polling access
-            processing_time = time.time() - start_time
-            final_result = AnalysisResult(
-                record_id=request_data.record_id,
-                status=quality_status,
-                analysis_result=combined_result,
-                analysis_name=analysis_name,
-                processing_stats={
-                    "job_id": job.job_id,
-                    "chunk_count": chunk_count,
-                    "total_characters": len(combined_result),
-                    "processing_time_seconds": round(processing_time, 2)
-                }
-            )
-            
-            # Store result for polling access
+            # Step 6: Store result for polling access
             self.job_queue.store_result(job.job_id, final_result)
             
-            # Send notification webhook to Coda (NEW APPROACH)
+            # Send notification webhook to Coda
             webhook_success = True
             if self.coda_webhook_url and self.coda_api_token:
                 webhook_success = await self._send_coda_webhook_notification(job.job_id, quality_status)
@@ -187,7 +232,7 @@ class AnalysisWorker:
     
     async def _send_coda_webhook_notification(self, job_id: str, status: str, max_retries: int = 3) -> bool:
         """
-        NEW: Send simple notification webhook to Coda automation
+        Send simple notification webhook to Coda automation
         Just notifies that analysis is complete - Coda fetches data via CheckResults
         """
         if not self.coda_webhook_url or not self.coda_api_token:

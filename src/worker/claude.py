@@ -147,8 +147,17 @@ class ClaudeService:
             logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
             assessment_prompt = f"""Analyze this AI response and determine if it successfully completed the requested analysis. Respond with exactly one word: SUCCESS or FAILED.
 
-SUCCESS = The response provides meaningful analysis, insights, or results relevant to the request.
-FAILED = The response contains error messages, explicit refusals, or clearly states it cannot complete the task.
+FAILED indicators:
+- Contains error messages or error codes (like "Error code: 400", "[Error processing")
+- Explicit refusals ("I cannot analyze", "I'm unable to", "I don't see any content")
+- Technical failure messages
+- Empty or nonsensical content
+- Very short responses that don't address the request
+
+SUCCESS indicators:
+- Provides meaningful analysis, insights, or structured results
+- Answers the original request appropriately
+- Contains substantive content relevant to the task
 
 Response to analyze: {analysis_result[:1500]}"""
 
@@ -156,7 +165,7 @@ Response to analyze: {analysis_result[:1500]}"""
                 model="claude-3-haiku-20240307",
                 max_tokens=10,
                 temperature=0.0,
-                system="You are a quality checker. SUCCESS if the AI provided actual analysis, insights, or useful information. FAILED only for clear errors, explicit refusals like 'I cannot analyze', 'I don't see any content', or technical failures.",
+                system="You are a quality checker. Look for ERROR MESSAGES first - any technical errors, API failures, or explicit refusals should be FAILED. Only mark SUCCESS if the AI provided actual analysis, insights, or useful information.",
                 messages=[{"role": "user", "content": assessment_prompt}]
             )
             
@@ -164,13 +173,13 @@ Response to analyze: {analysis_result[:1500]}"""
             
             if result not in ["SUCCESS", "FAILED"]:
                 logger.warning(f"Unexpected quality assessment result: {result}")
-                return "SUCCESS"
+                return "FAILED"  # CHANGED: Default to FAILED instead of SUCCESS
             
             return result
             
         except Exception as e:
             logger.error(f"Quality assessment failed: {e}")
-            return "SUCCESS"
+            return "FAILED"  # CHANGED: Default to FAILED instead of SUCCESS
     
     async def ensure_format_consistency(self, combined_result: str, request_data: Any) -> str:
         """Ensure consistent formatting across all chunks"""
@@ -202,6 +211,12 @@ Return the full reformatted analysis:
     async def generate_analysis_name(self, analysis_result: str) -> str:
         """Generate concise analysis name using Claude"""
         try:
+            # Quick check - if this looks like an error, don't waste API call
+            if (analysis_result.startswith("[Error processing") or 
+                "Error code:" in analysis_result[:200] or 
+                len(analysis_result.strip()) < 50):
+                return "Processing Error"
+            
             logger.info("Starting name generation using model: claude-3-haiku-20240307")
             name_prompt = f"Generate a single professional title (5-7 words only, no extra text) for the following analysis: {analysis_result[:1500]}"
             
@@ -212,7 +227,7 @@ Return the full reformatted analysis:
                 messages=[{"role": "user", "content": name_prompt}]
             )
             
-            result = response.content[0].text.strip().strip('"\'.')
+            result = response.content[0].text.strip().strip('"\'.') 
             
             if len(result) > 50:
                 result = result[:50].strip()
