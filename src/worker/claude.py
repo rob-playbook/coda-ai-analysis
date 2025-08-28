@@ -146,28 +146,47 @@ class ClaudeService:
         
         Enhanced to catch "helpful but not actionable" responses as failures.
         Business requirement: Must deliver analysis, not ask for clarification.
+        
+        Uses explicit pattern matching for common failure phrases like:
+        - "I cannot provide the requested analysis"
+        - "doesn't match what I expected" 
+        - "Would you like me to:"
+        - "Since this content doesn't align with..."
+        
+        These responses break automated workflows even though they're "helpful".
         """
         try:
             logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
             assessment_prompt = f"""Analyze this AI response and determine if it successfully completed the requested analysis. Respond with exactly one word: SUCCESS or FAILED.
 
-FAILED indicators:
-- Contains error messages or error codes (like "Error code: 400", "[Error processing")
-- Explicit refusals ("I cannot analyze", "I'm unable to", "I don't see any content")
+AUTOMATIC FAILED phrases (if any of these appear, mark FAILED):
+- "I cannot provide the requested analysis"
+- "I cannot provide the"
+- "doesn't match what I expected"
+- "doesn't align with"
+- "Would you like me to:"
+- "Would you like me to"
+- "Wait for you to provide"
+- "appears to be about X rather than Y"
+- "seems to be a mismatch"
+- "There seems to be"
+- "Since this content doesn't"
+
+Other FAILED indicators:
+- Contains error messages or error codes
+- Explicit refusals ("I cannot analyze", "I'm unable to")
 - Technical failure messages
 - Empty or nonsensical content
 - Very short responses that don't address the request
-- Identifies content mismatches and asks for clarification instead of analyzing
-- Offers multiple options or approaches instead of providing analysis
-- States there's insufficient or wrong source material
-- Asks "Would you like me to" or similar clarification questions
-- Points out discrepancies between different content sections
+- Identifies content problems instead of analyzing the provided content
+- Offers multiple choice options instead of delivering analysis
+- Points out discrepancies and stops there
 
 SUCCESS indicators:
-- Provides meaningful analysis, insights, or structured results using the provided content
-- Delivers the requested analysis regardless of perceived content issues
-- Contains substantive analytical content relevant to the task
-- Answers the original request appropriately with actual findings
+- Provides actual analysis, insights, or structured results using whatever content was provided
+- Delivers findings and conclusions regardless of perceived content issues
+- Contains substantive analytical content that answers the original request
+- Proceeds with analysis using the source material provided
 
 Response to analyze: {analysis_result[:1500]}"""
 
@@ -175,7 +194,7 @@ Response to analyze: {analysis_result[:1500]}"""
                 model="claude-3-haiku-20240307",
                 max_tokens=10,
                 temperature=0.0,
-                system="You are a quality checker for analysis workflows. Mark FAILED if the response: 1) Contains errors/refusals, 2) Asks for clarification instead of analyzing, 3) Offers options instead of delivering analysis, 4) Points out content issues rather than proceeding with analysis. Mark SUCCESS only if actual analysis/insights are delivered using the provided content.",
+                system="You are a quality checker for automated analysis workflows. Check for AUTOMATIC FAILED phrases first - if you see 'I cannot provide the requested analysis', 'Would you like me to', 'doesn't match what I expected', 'doesn't align with', or similar phrases, mark FAILED immediately. SUCCESS only if actual analysis results are delivered using the provided content, regardless of content type or perceived mismatches.",
                 messages=[{"role": "user", "content": assessment_prompt}]
             )
             
