@@ -90,28 +90,54 @@ async def start_analysis(request: PollingRequest):
                             quality_status = await claude_service.assess_quality(result)
                             analysis_name = await claude_service.generate_analysis_name(result)
                             
-                            # Store result for polling access even for sync completion
+                            # Handle failed quality assessment by returning actual Claude response as error
+                            if quality_status == "FAILED":
+                                # Store result with Claude's actual response as error message
+                                sync_result = AnalysisResult(
+                                    record_id=request.record_id,
+                                    status="FAILED",
+                                    analysis_result=result,  # Claude's actual response
+                                    analysis_name="Quality Check Failed",
+                                    error_message=result,  # Claude's actual response explaining why it failed
+                                    processing_stats={
+                                        "job_id": job_id,
+                                        "processing_time_seconds": "immediate",
+                                        "sync_completion": True,
+                                        "quality_status": quality_status
+                                    }
+                                )
+                                job_queue.store_result(job_id, sync_result)
+                                
+                                return {
+                                    "job_id": job_id,
+                                    "status": "failed",
+                                    "error_message": result,  # Claude's actual response explaining the issue
+                                    "analysis_result": result,
+                                    "analysis_name": "Quality Check Failed",
+                                    "processing_time_seconds": "immediate"
+                                }
+                            
+                            # Quality assessment passed - normal success path
                             sync_result = AnalysisResult(
                                 record_id=request.record_id,
-                                status=quality_status,  # Use quality assessment result
+                                status="SUCCESS",
                                 analysis_result=result,
                                 analysis_name=analysis_name,
                                 processing_stats={
                                     "job_id": job_id,
                                     "processing_time_seconds": "immediate",
-                                    "sync_completion": True
-                                },
-                                error_message=None if quality_status == "SUCCESS" else "Analysis failed quality assessment"
+                                    "sync_completion": True,
+                                    "quality_status": quality_status
+                                }
                             )
                             job_queue.store_result(job_id, sync_result)
                             
                             return {
                                 "job_id": job_id,
-                                "status": "complete" if quality_status == "SUCCESS" else "failed",
+                                "status": "complete",
                                 "analysis_result": result,
                                 "analysis_name": analysis_name,
-                                "processing_time_seconds": "immediate",
-                                "error_message": None if quality_status == "SUCCESS" else "Analysis failed quality assessment"
+                                "processing_time_seconds": "immediate"
                             }
                         except Exception as sync_error:
                             logger.warning(f"Sync processing failed, falling back to async: {sync_error}")
@@ -158,14 +184,13 @@ async def get_analysis_result(job_id: str):
         # First check if we have a stored result (works for both sync and async)
         result = job_queue.get_job_result(job_id)
         if result:
-            # Use actual quality assessment result instead of hardcoding "complete"
             return {
                 "job_id": job_id,
                 "status": "complete" if result.status == "SUCCESS" else "failed",
                 "analysis_result": result.analysis_result,
                 "analysis_name": result.analysis_name,
-                "processing_stats": result.processing_stats,
-                "error_message": result.error_message if result.status == "FAILED" else None
+                "error_message": result.error_message,
+                "processing_stats": result.processing_stats
             }
         
         # No stored result, check if job exists in queue (async jobs)

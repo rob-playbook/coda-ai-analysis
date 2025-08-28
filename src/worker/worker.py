@@ -87,7 +87,12 @@ class AnalysisWorker:
         return "; ".join(errors) if errors else "Unknown processing error"
     
     async def process_job(self, job: AnalysisJob):
-        """Process a single analysis job"""
+        """Process a single analysis job
+        
+        BACKWARD COMPATIBILITY: Quality assessment failures are embedded in the 
+        analysis_result field rather than changing status codes. This ensures 
+        existing Coda CheckResults buttons continue to work without modification.
+        """
         logger.info(f"Processing job {job.job_id} for record {job.record_id}")
         start_time = time.time()
         
@@ -147,28 +152,30 @@ class AnalysisWorker:
                 # Step 4: Quality assessment (only for successful processing)
                 quality_status = await self.claude_service.assess_quality(combined_result)
                 
-                # Step 5: Generate analysis name (only for successful processing)
+                # Step 5: Generate analysis name (only for successful processing) 
                 analysis_name = await self.claude_service.generate_analysis_name(combined_result)
                 
-                # Store successful result
+                # Store result - use actual quality status and Claude's response as error message
                 processing_time = time.time() - start_time
                 final_result = AnalysisResult(
                     record_id=request_data.record_id,
                     status=quality_status,
                     analysis_result=combined_result,
-                    analysis_name=analysis_name,
+                    analysis_name="Quality Check Failed" if quality_status == "FAILED" else analysis_name,
+                    error_message=combined_result if quality_status == "FAILED" else None,
                     processing_stats={
                         "job_id": job.job_id,
                         "chunk_count": chunk_count,
                         "total_characters": len(combined_result),
-                        "processing_time_seconds": round(processing_time, 2)
+                        "processing_time_seconds": round(processing_time, 2),
+                        "quality_status": quality_status
                     }
                 )
             
             # Step 6: Store result for polling access
             self.job_queue.store_result(job.job_id, final_result)
             
-            # Send notification webhook to Coda
+            # Send notification webhook to Coda with actual quality status
             webhook_success = True
             if self.coda_webhook_url and self.coda_api_token:
                 webhook_success = await self._send_coda_webhook_notification(job.job_id, quality_status)
