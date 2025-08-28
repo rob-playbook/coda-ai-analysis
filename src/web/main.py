@@ -85,28 +85,33 @@ async def start_analysis(request: PollingRequest):
                     if len(chunks) == 1:  # Single chunk - try sync
                         try:
                             result = await claude_service.process_chunk(chunks[0], request)
+                            
+                            # ADD QUALITY ASSESSMENT TO SYNC PATH TOO (consistency with async path)
+                            quality_status = await claude_service.assess_quality(result)
                             analysis_name = await claude_service.generate_analysis_name(result)
                             
                             # Store result for polling access even for sync completion
                             sync_result = AnalysisResult(
                                 record_id=request.record_id,
-                                status="SUCCESS",
+                                status=quality_status,  # Use quality assessment result
                                 analysis_result=result,
                                 analysis_name=analysis_name,
                                 processing_stats={
                                     "job_id": job_id,
                                     "processing_time_seconds": "immediate",
                                     "sync_completion": True
-                                }
+                                },
+                                error_message=None if quality_status == "SUCCESS" else "Analysis failed quality assessment"
                             )
                             job_queue.store_result(job_id, sync_result)
                             
                             return {
                                 "job_id": job_id,
-                                "status": "complete",
+                                "status": "complete" if quality_status == "SUCCESS" else "failed",
                                 "analysis_result": result,
                                 "analysis_name": analysis_name,
-                                "processing_time_seconds": "immediate"
+                                "processing_time_seconds": "immediate",
+                                "error_message": None if quality_status == "SUCCESS" else "Analysis failed quality assessment"
                             }
                         except Exception as sync_error:
                             logger.warning(f"Sync processing failed, falling back to async: {sync_error}")
@@ -144,18 +149,23 @@ async def start_analysis(request: PollingRequest):
 @app.get("/response/{job_id}")
 async def get_analysis_result(job_id: str):
     """
-    NEW: Get analysis results by job ID
+    Get analysis results by job ID
+    
+    CRITICAL: Uses actual quality assessment result, not hardcoded "complete".
+    This ensures failed quality assessments are properly returned as "failed".
     """
     try:
         # First check if we have a stored result (works for both sync and async)
         result = job_queue.get_job_result(job_id)
         if result:
+            # Use actual quality assessment result instead of hardcoding "complete"
             return {
                 "job_id": job_id,
-                "status": "complete",
+                "status": "complete" if result.status == "SUCCESS" else "failed",
                 "analysis_result": result.analysis_result,
                 "analysis_name": result.analysis_name,
-                "processing_stats": result.processing_stats
+                "processing_stats": result.processing_stats,
+                "error_message": result.error_message if result.status == "FAILED" else None
             }
         
         # No stored result, check if job exists in queue (async jobs)
