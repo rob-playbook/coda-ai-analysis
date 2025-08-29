@@ -4,9 +4,29 @@ from typing import Dict, Any, List
 import asyncio
 import logging
 import time
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if
 
 logger = logging.getLogger(__name__)
+
+def should_retry_exception(retry_state):
+    """Custom retry logic: don't retry timeouts, auth errors, or 504 Gateway timeouts"""
+    exception = retry_state.outcome.exception()
+    
+    # Don't retry timeouts - server overload won't resolve quickly
+    if isinstance(exception, asyncio.TimeoutError):
+        return False
+        
+    # Don't retry auth errors - permanent config issues
+    if isinstance(exception, anthropic.AuthenticationError):
+        return False
+        
+    # Don't retry 504 Gateway Timeout - infrastructure overload, more requests make it worse
+    if isinstance(exception, anthropic.APIError):
+        if hasattr(exception, 'status_code') and exception.status_code == 504:
+            return False
+            
+    # Retry everything else (rate limits, network glitches, etc.)
+    return True
 
 class ClaudeService:
     def __init__(self, api_key: str):
@@ -15,7 +35,7 @@ class ClaudeService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=30),
-        retry=retry_if_not_exception_type((asyncio.TimeoutError, anthropic.AuthenticationError)),
+        retry=retry_if(should_retry_exception),
         reraise=True
     )
     async def process_chunk(self, chunk_content: str, request_data: Any) -> str:
