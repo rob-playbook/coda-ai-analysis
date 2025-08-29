@@ -4,7 +4,7 @@ from typing import Dict, Any, List
 import asyncio
 import logging
 import time
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,7 @@ class ClaudeService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=30),
+        retry=retry_if_not_exception_type((asyncio.TimeoutError, anthropic.AuthenticationError)),
         reraise=True
     )
     async def process_chunk(self, chunk_content: str, request_data: Any) -> str:
@@ -61,8 +62,10 @@ class ClaudeService:
             logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
             start_time = time.time()
             
-            # Use regular messages.create for all requests (SDK 0.64+ supports thinking parameter)
-            response = self.client.messages.create(**api_params)
+            # Add timeout protection to main API calls
+            async with asyncio.timeout(120):  # 2-minute timeout for main analysis
+                # Use regular messages.create for all requests (SDK 0.64+ supports thinking parameter)
+                response = self.client.messages.create(**api_params)
             
             end_time = time.time()
             
@@ -94,10 +97,18 @@ class ClaudeService:
             logger.warning(f"Rate limit hit, will retry: {e}")
             raise
         except anthropic.APIError as e:
-            logger.error(f"Claude API error: {e}")
+            # DEBUG: Log specific details about API errors to understand 504 handling
+            logger.error(f"Claude API error (type: {type(e).__name__}): {e}")
+            if hasattr(e, 'status_code'):
+                logger.error(f"Status code: {e.status_code}")
+            if hasattr(e, 'response'):
+                logger.error(f"Response: {getattr(e.response, 'status_code', 'no status')}")
+            raise
+        except asyncio.TimeoutError as e:
+            logger.error(f"Claude API call timed out after 120 seconds: {e}")
             raise
         except Exception as e:
-            logger.error(f"Unexpected error in Claude API call: {e}")
+            logger.error(f"Unexpected error in Claude API call (type: {type(e).__name__}): {e}")
             raise
     
     def _inject_content_into_user_prompt(self, user_prompt: str, chunk_content: str) -> str:
@@ -236,7 +247,7 @@ Response to analyze: {analysis_result[:1500]}"""
             return "SUCCESS"  # Don't fail main analysis due to quality check errors
     
     async def ensure_format_consistency(self, combined_result: str, request_data: Any) -> str:
-        """Ensure consistent formatting across all chunks"""
+        """Ensure consistent formatting across all chunks with timeout protection"""
         try:
             logger.info(f"Starting consistency check using model: {request_data.model}")
             consistency_prompt = f"""You previously processed this request in chunks. Here was the original prompt:
@@ -249,21 +260,26 @@ Do not add, remove, or modify any analysis content - only fix formatting inconsi
 Return the full reformatted analysis:
 {combined_result}"""
             
-            response = self.client.messages.create(
-                model=request_data.model,
-                max_tokens=min(request_data.max_tokens, 8192),
-                temperature=0.1,
-                messages=[{"role": "user", "content": consistency_prompt}]
-            )
+            # Add timeout protection
+            async with asyncio.timeout(60):  # 1-minute timeout for format consistency
+                response = self.client.messages.create(
+                    model=request_data.model,
+                    max_tokens=min(request_data.max_tokens, 8192),
+                    temperature=0.1,
+                    messages=[{"role": "user", "content": consistency_prompt}]
+                )
             
-            return response.content[0].text.strip()
+                return response.content[0].text.strip()
             
+        except asyncio.TimeoutError:
+            logger.warning("Format consistency check timed out - returning original result")
+            return combined_result
         except Exception as e:
-            logger.error(f"Format consistency check failed: {e}")
+            logger.warning(f"Format consistency check failed: {e} - returning original result")
             return combined_result  # Return original if consistency check fails
     
     async def generate_analysis_name(self, analysis_result: str) -> str:
-        """Generate concise analysis name using Claude"""
+        """Generate concise analysis name using Claude with timeout protection"""
         try:
             # Quick check - if this looks like an error, don't waste API call
             if (analysis_result.startswith("[Error processing") or 
@@ -274,20 +290,25 @@ Return the full reformatted analysis:
             logger.info("Starting name generation using model: claude-3-haiku-20240307")
             name_prompt = f"Generate a single professional title (5-7 words only, no extra text) for the following analysis: {analysis_result[:1500]}"
             
-            response = self.client.messages.create(
-                model="claude-3-haiku-20240307",
-                max_tokens=30,
-                temperature=0.1,
-                messages=[{"role": "user", "content": name_prompt}]
-            )
+            # Add timeout protection
+            async with asyncio.timeout(30):  # 30-second timeout for name generation
+                response = self.client.messages.create(
+                    model="claude-3-haiku-20240307",
+                    max_tokens=30,
+                    temperature=0.1,
+                    messages=[{"role": "user", "content": name_prompt}]
+                )
             
-            result = response.content[0].text.strip().strip('"\'.') 
+                result = response.content[0].text.strip().strip('"\'.') 
+                
+                if len(result) > 50:
+                    result = result[:50].strip()
+                
+                return result if result else "AI Analysis Result"
             
-            if len(result) > 50:
-                result = result[:50].strip()
-            
-            return result if result else "AI Analysis Result"
-            
+        except asyncio.TimeoutError:
+            logger.warning("Name generation timed out - using default name")
+            return "AI Analysis Result"
         except Exception as e:
-            logger.error(f"Name generation failed: {e}")
+            logger.warning(f"Name generation failed: {e} - using default name")
             return "AI Analysis Result"
