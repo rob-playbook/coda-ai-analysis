@@ -283,31 +283,41 @@ Return the full reformatted analysis:
             
             logger.info("Starting name generation using model: claude-3-haiku-20240307")
             
-            # Extract context from original request (WHAT not HOW)
-            extraction_context = f"""System: {request_data.system_prompt[:200] if request_data.system_prompt else ""}
-User: {request_data.user_prompt[:400] if request_data.user_prompt else ""}"""
+            # Extract only the task context from user prompt (ignore system prompt)
+            task_context = request_data.user_prompt[:300] if request_data.user_prompt else ""
             
-            name_prompt = f"""Based on this analysis request, identify WHAT is being analyzed or done (ignore HOW it should be done). 
+            name_prompt = f"""Extract the core task from this request. What TYPE of analysis or work is being performed?
 
-Respond with a professional title (5-7 words only):
+Request: {task_context}
 
-{extraction_context}
+Respond with just the task type as a professional title (4-6 words). 
+Examples: "Research Brief Review", "Interview Data Analysis", "User Journey Mapping"
 
-Focus only on the CORE TASK/OBJECTIVE, ignore all methodology, rules, and detailed instructions."""
+Ignore WHO is doing it, focus only on WHAT is being done."""
             
             # Add timeout protection
             async with asyncio.timeout(30):  # 30-second timeout for name generation
                 response = self.client.messages.create(
                     model="claude-3-haiku-20240307",
-                    max_tokens=30,
+                    max_tokens=50,  # Increased from 30 to avoid truncation
                     temperature=0.1,
                     messages=[{"role": "user", "content": name_prompt}]
                 )
             
                 result = response.content[0].text.strip().strip('"\'.') 
                 
+                # Better truncation - don't cut mid-word
                 if len(result) > 50:
-                    result = result[:50].strip()
+                    words = result.split()
+                    truncated = []
+                    char_count = 0
+                    for word in words:
+                        if char_count + len(word) + 1 <= 50:  # +1 for space
+                            truncated.append(word)
+                            char_count += len(word) + 1
+                        else:
+                            break
+                    result = " ".join(truncated)
                 
                 return result if result else "AI Analysis Result"
             
