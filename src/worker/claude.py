@@ -230,11 +230,14 @@ Response to analyze: {analysis_result[:1500]}"""
                 
                 result = response.content[0].text.strip().upper()
                 
+                # DEBUG: Log what we're assessing and why it failed
+                logger.info(f"Quality assessment input (first 500 chars): {analysis_result[:500]}")
+                logger.info(f"Quality assessment result: {result}")
+                
                 if result not in ["SUCCESS", "FAILED"]:
                     logger.warning(f"Unexpected quality assessment result: {result}")
                     return "SUCCESS"  # Default to SUCCESS for unexpected responses
                 
-                logger.info(f"Quality assessment completed: {result}")
                 return result
                 
         except asyncio.TimeoutError:
