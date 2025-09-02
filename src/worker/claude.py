@@ -272,8 +272,8 @@ Return the full reformatted analysis:
             logger.warning(f"Format consistency check failed: {e} - returning original result")
             return combined_result  # Return original if consistency check fails
     
-    async def generate_analysis_name(self, analysis_result: str) -> str:
-        """Generate concise analysis name using Claude with timeout protection"""
+    async def generate_analysis_name(self, analysis_result: str, request_data: Any) -> str:
+        """Generate concise analysis name using Claude with timeout protection based on request context"""
         try:
             # Quick check - if this looks like an error, don't waste API call
             if (analysis_result.startswith("[Error processing") or 
@@ -282,7 +282,18 @@ Return the full reformatted analysis:
                 return "Processing Error"
             
             logger.info("Starting name generation using model: claude-3-haiku-20240307")
-            name_prompt = f"Generate a single professional title (5-7 words only, no extra text) for the following analysis: {analysis_result[:1500]}"
+            
+            # Extract context from original request (WHAT not HOW)
+            extraction_context = f"""System: {request_data.system_prompt[:200] if request_data.system_prompt else ""}
+User: {request_data.user_prompt[:400] if request_data.user_prompt else ""}"""
+            
+            name_prompt = f"""Based on this analysis request, identify WHAT is being analyzed or done (ignore HOW it should be done). 
+
+Respond with a professional title (5-7 words only):
+
+{extraction_context}
+
+Focus only on the CORE TASK/OBJECTIVE, ignore all methodology, rules, and detailed instructions."""
             
             # Add timeout protection
             async with asyncio.timeout(30):  # 30-second timeout for name generation

@@ -153,7 +153,7 @@ class AnalysisWorker:
                 quality_status = await self.claude_service.assess_quality(combined_result)
                 
                 # Step 5: Generate analysis name (only for successful processing) 
-                analysis_name = await self.claude_service.generate_analysis_name(combined_result)
+                analysis_name = await self.claude_service.generate_analysis_name(combined_result, request_data)
                 
                 # Store result - use actual quality status and Claude's response as error message
                 processing_time = time.time() - start_time
