@@ -182,25 +182,20 @@ AUTOMATIC FAILED phrases (if any of these appear, mark FAILED):
 - "I cannot enhance"
 - "I cannot create"
 - "Given this mismatch, I cannot"
-- "doesn't match what I expected"
-- "doesn't align with"
-- "there's a complete mismatch"
-- "there's a mismatch"
-- "appears to be a mismatch"
 - "Would you like me to:"
 - "Would you like me to"
 - "Please advise on how"
 - "Please advise"
 - "Wait for you to provide"
+- "the source content doesn't match"
+- "the target content doesn't match"
+- "this content appears to be [X] when [Y] was requested"
+- "expected source content but received"
+- "the provided source material is"
+- "this source content is not"
 - "appears to be about X rather than Y"
-- "seems to be a mismatch"
-- "There seems to be"
-- "Since this content doesn't"
 - "these are completely different subjects"
-- "no overlap"
-- "completely different"
-- "significant mismatch"
-
+- "Since this content doesn't match the request"
 
 Other FAILED indicators:
 - Contains error messages or error codes
@@ -208,9 +203,7 @@ Other FAILED indicators:
 - Technical failure messages
 - Empty or nonsensical content
 - Very short responses that don't address the request
-- Refuses to analyze and only identifies content problems without delivering insights
-- Offers multiple choice options instead of delivering analysis
-- Points out discrepancies and stops without providing analysis
+- Refuses to analyze due to source/target content mismatch
 
 SUCCESS indicators:
 - Provides actual analysis, insights, or structured results using whatever content was provided
