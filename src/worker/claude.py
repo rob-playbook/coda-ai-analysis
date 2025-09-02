@@ -200,9 +200,7 @@ AUTOMATIC FAILED phrases (if any of these appear, mark FAILED):
 - "no overlap"
 - "completely different"
 - "significant mismatch"
-- "1)"
-- "2)"
-- "3)"
+
 
 Other FAILED indicators:
 - Contains error messages or error codes
@@ -226,7 +224,7 @@ Response to analyze: {analysis_result[:1500]}"""
                     model="claude-3-haiku-20240307",
                     max_tokens=10,
                     temperature=0.0,
-                    system="You are a strict quality checker for automated workflows. IMMEDIATELY mark FAILED if you see ANY of these exact phrases: 'I cannot properly', 'Given this mismatch', 'there's a mismatch', 'Would you like me to', 'Please advise', '1)', '2)', '3)', 'completely different subjects'. These responses break workflows even if they seem helpful. SUCCESS only means actual analysis was delivered.",
+                    system="You are a strict quality checker for automated workflows. IMMEDIATELY mark FAILED if you see ANY of these exact phrases: 'I cannot properly', 'Given this mismatch', 'there's a mismatch', 'Would you like me to', 'Please advise', 'completely different subjects'. These responses break workflows even if they seem helpful. SUCCESS only means actual analysis was delivered.",
                     messages=[{"role": "user", "content": assessment_prompt}]
                 )
                 
