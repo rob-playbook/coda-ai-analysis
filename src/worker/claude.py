@@ -208,9 +208,9 @@ Other FAILED indicators:
 - Technical failure messages
 - Empty or nonsensical content
 - Very short responses that don't address the request
-- Identifies content problems instead of analyzing the provided content
+- Refuses to analyze and only identifies content problems without delivering insights
 - Offers multiple choice options instead of delivering analysis
-- Points out discrepancies and stops there
+- Points out discrepancies and stops without providing analysis
 
 SUCCESS indicators:
 - Provides actual analysis, insights, or structured results using whatever content was provided
