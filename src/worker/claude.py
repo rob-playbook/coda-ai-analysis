@@ -211,7 +211,7 @@ SUCCESS indicators:
 - Contains substantive analytical content that answers the original request
 - Proceeds with analysis using the source material provided
 
-Response to analyze: {analysis_result[:1500]}"""
+Response to analyze: {analysis_result[:10000]}"""
 
                 response = self.client.messages.create(
                     model="claude-3-haiku-20240307",
