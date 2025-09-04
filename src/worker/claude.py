@@ -173,58 +173,30 @@ class ClaudeService:
             # Add timeout protection - quality assessment should not break main analysis
             async with asyncio.timeout(15):  # 15-second timeout for quality assessment
                 logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
-                assessment_prompt = f"""Analyze this AI response and determine if it successfully completed the requested analysis. Respond with exactly one word: SUCCESS or FAILED.
+                assessment_prompt = f"""You are evaluating whether an AI analysis successfully completed the requested task.
 
-AUTOMATIC FAILED phrases (if any of these appear, mark FAILED):
-- "I cannot provide the requested analysis"
-- "I cannot provide the"
-- "I cannot properly"
-- "I cannot enhance"
-- "I cannot create"
-- "Given this mismatch, I cannot"
-- "Would you like me to:"
-- "Would you like me to"
-- "Please advise on how"
-- "Please advise"
-- "Wait for you to provide"
-- "the source content doesn't match"
-- "the target content doesn't match"
-- "this content appears to be [X] when [Y] was requested"
-- "expected source content but received"
-- "the provided source material is"
-- "this source content is not"
-- "appears to be about X rather than Y"
-- "these are completely different subjects"
-- "Since this content doesn't match the request"
-- "The content provided is not"
-- "This is not a [X], but rather"
-- "Since there is no actual [X] to review"
-- "The content provided is [X] not [Y]"
-- "prompt and content mismatch"
+ORIGINAL REQUEST: {request_data.user_prompt[:500]}
 
-Other FAILED indicators:
-- Contains error messages or error codes
-- Explicit refusals ("I cannot analyze", "I'm unable to")
-- Technical failure messages
-- Empty or nonsensical content
-- Very short responses that don't address the request
-- Refuses to analyze due to source/target content mismatch
+AI RESPONSE: {analysis_result[:10000]}
 
-SUCCESS indicators:
-- Provides actual analysis, insights, or structured results using whatever content was provided
-- Delivers findings and conclusions regardless of perceived content issues
-- Contains substantive analytical content that answers the original request
-- Proceeds with analysis using the source material provided
+Evaluate these failure conditions:
+1. Content mismatch: Does the AI indicate the provided content type doesn't match what was requested?
+2. Refusal to analyze: Does the AI refuse to complete the analysis for any reason?
+3. Seeking clarification: Does the AI ask questions or offer options instead of delivering analysis?
+4. Technical failure: Does the response contain error messages or indicate processing failed?
+5. Prompt-output mismatch: Does the delivered output fail to address what the prompt specifically requested?
+6. Incomplete delivery: Does the response format, scope, or depth fail to match what the prompt asked for?
 
-Original request: {request_data.user_prompt[:500]}
+If ANY of these conditions are met, respond: FAILED
+If the AI successfully completed the requested analysis, respond: SUCCESS
 
-Response to analyze: {analysis_result[:10000]}"""
+Use your intelligence to assess the MEANING and INTENT, not exact phrase matching."""
 
                 response = self.client.messages.create(
                     model="claude-3-haiku-20240307",
                     max_tokens=10,
                     temperature=0.0,
-                    system="You are a strict quality checker for automated workflows. IMMEDIATELY mark FAILED if you see ANY of these exact phrases: 'I cannot properly', 'Given this mismatch', 'there's a mismatch', 'Would you like me to', 'Please advise', 'completely different subjects'. These responses break workflows even if they seem helpful. SUCCESS only means actual analysis was delivered.",
+                    system="You are an intelligent quality evaluator for automated workflows. Assess whether the AI response successfully fulfills the original request using semantic understanding, not pattern matching. Consider content alignment, completeness, and whether the deliverables match what was specifically asked for.",
                     messages=[{"role": "user", "content": assessment_prompt}]
                 )
                 
