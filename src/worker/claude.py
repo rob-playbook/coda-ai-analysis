@@ -208,16 +208,19 @@ Respond: SUCCESS or FAILED"""
                 
                 result = response.content[0].text.strip().upper()
                 
+                # Extract just the first word (SUCCESS or FAILED) from response
+                first_word = result.split()[0] if result.split() else result
+                
                 # DEBUG: Log Haiku's full reasoning
                 logger.info(f"Quality assessment reasoning: {response.content[0].text}")
                 logger.info(f"Quality assessment input (first 500 chars): {analysis_result[:500]}")
-                logger.info(f"Quality assessment result: {result}")
+                logger.info(f"Quality assessment result: {first_word}")
                 
-                if result not in ["SUCCESS", "FAILED"]:
-                    logger.warning(f"Unexpected quality assessment result: {result}")
+                if first_word not in ["SUCCESS", "FAILED"]:
+                    logger.warning(f"Unexpected quality assessment result: {first_word}")
                     return "SUCCESS"  # Default to SUCCESS for unexpected responses
                 
-                return result
+                return first_word
                 
         except asyncio.TimeoutError:
             logger.warning("Quality assessment timed out after 15 seconds - defaulting to SUCCESS")
