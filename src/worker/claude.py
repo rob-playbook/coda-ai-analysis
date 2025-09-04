@@ -152,7 +152,7 @@ class ClaudeService:
         
         return results
     
-    async def assess_quality(self, analysis_result: str) -> str:
+    async def assess_quality(self, analysis_result: str, request_data: Any) -> str:
         """Assess quality of analysis result using separate Claude call
         
         Enhanced to catch "helpful but not actionable" responses as failures.

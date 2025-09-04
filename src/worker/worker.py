@@ -150,7 +150,7 @@ class AnalysisWorker:
                     logger.info(f"After consistency check: {after_length} characters (diff: {after_length - before_length})") 
                 
                 # Step 4: Quality assessment (only for successful processing)
-                quality_status = await self.claude_service.assess_quality(combined_result)
+                quality_status = await self.claude_service.assess_quality(combined_result, request_data)
                 
                 # Step 5: Generate analysis name (only for successful processing) 
                 analysis_name = await self.claude_service.generate_analysis_name(combined_result, request_data)
