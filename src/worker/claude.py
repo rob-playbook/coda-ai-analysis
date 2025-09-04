@@ -173,30 +173,30 @@ class ClaudeService:
             # Add timeout protection - quality assessment should not break main analysis
             async with asyncio.timeout(15):  # 15-second timeout for quality assessment
                 logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
-                assessment_prompt = f"""You are evaluating contract fulfillment for an automated business workflow.
+                assessment_prompt = f"""IMPORTANT: Start your response with either SUCCESS or FAILED as the very first word.
+
+You are evaluating contract fulfillment for an automated business workflow.
 
 ORIGINAL REQUEST: {request_data.user_prompt[:500]}
 
 AI RESPONSE: {analysis_result[:10000]}
 
-TASK: Determine if the AI response can serve as a direct substitute for the requested deliverable.
+Did the AI deliver the core requested analysis using the provided content?
 
-KEY QUESTIONS:
-1. What specific deliverable was requested? (e.g., "research brief review", "financial analysis", "interview summary")
-2. Did the AI deliver that exact deliverable using the expected content type?
-3. Did the AI identify any reason why it cannot fulfill the request as specified?
+Mark as FAILED only if:
+- Content type completely mismatched (e.g., transcript provided when research brief was requested)
+- Explicit refusal to analyze the provided content
+- No substantive analysis provided
+- Clear statement that the requested task cannot be completed
 
-EVALUATION RULES:
-- If the AI states the content type doesn't match what's needed → FAILED
-- If the AI says it will "infer" or "work around" missing elements → FAILED  
-- If the AI offers alternatives instead of the requested deliverable → FAILED
-- If the AI identifies limitations that prevent direct fulfillment → FAILED
+Mark as SUCCESS if:
+- Core request fulfilled (delivers the main analysis requested)
+- Uses the provided content appropriately
+- Addresses the main ask, even with minor caveats or limitations noted
 
-SUCCESS requires: Complete, direct fulfillment of the specific request without caveats, workarounds, or content type issues.
+You must respond with either SUCCESS or FAILED only - no other options are valid.
 
-Can this response serve as a drop-in replacement for the requested deliverable?
-
-Respond: SUCCESS or FAILED"""
+Focus on whether the fundamental request was completed, not minor imperfections."""
 
                 response = self.client.messages.create(
                     model="claude-3-haiku-20240307",
