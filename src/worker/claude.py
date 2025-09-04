@@ -196,6 +196,11 @@ AUTOMATIC FAILED phrases (if any of these appear, mark FAILED):
 - "appears to be about X rather than Y"
 - "these are completely different subjects"
 - "Since this content doesn't match the request"
+- "The content provided is not"
+- "This is not a [X], but rather"
+- "Since there is no actual [X] to review"
+- "The content provided is [X] not [Y]"
+- "prompt and content mismatch"
 
 Other FAILED indicators:
 - Contains error messages or error codes
@@ -210,6 +215,8 @@ SUCCESS indicators:
 - Delivers findings and conclusions regardless of perceived content issues
 - Contains substantive analytical content that answers the original request
 - Proceeds with analysis using the source material provided
+
+Original request: {request_data.user_prompt[:500]}
 
 Response to analyze: {analysis_result[:10000]}"""
 
