@@ -175,28 +175,33 @@ class ClaudeService:
                 logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
                 assessment_prompt = f"""IMPORTANT: Start your response with either SUCCESS or FAILED as the very first word.
 
-You are evaluating contract fulfillment for an automated business workflow.
+You are evaluating whether an AI completed the requested task.
 
 ORIGINAL REQUEST: {request_data.user_prompt[:500]}
 
 AI RESPONSE: {analysis_result[:10000]}
 
-Did the AI deliver the core requested analysis using the provided content?
+EVALUATION QUESTIONS:
 
-Mark as FAILED only if:
-- Content type completely mismatched (e.g., transcript provided when research brief was requested)
-- Explicit refusal to analyze the provided content
-- No substantive analysis provided
-- Clear statement that the requested task cannot be completed
+1. CONTENT TYPE MISMATCH: Does the AI explicitly state that the provided content is the wrong type for what was requested?
+   - Look for phrases like "This is a transcript, not a research brief" or "This appears to be X when you asked for Y"
 
-Mark as SUCCESS if:
-- Core request fulfilled (delivers the main analysis requested)
-- Uses the provided content appropriately
-- Addresses the main ask, even with minor caveats or limitations noted
+2. EXPLICIT REFUSAL: Does the AI state it cannot complete the requested task?
+   - Look for phrases like "I cannot analyze this" or "I'm unable to provide the requested analysis"
 
-You must respond with either SUCCESS or FAILED only - no other options are valid.
+3. SEEKING CLARIFICATION: Does the AI ask questions instead of providing analysis?
+   - Look for phrases like "Would you like me to..." or "Please provide..." or "Which approach would you prefer?"
 
-Focus on whether the fundamental request was completed, not minor imperfections."""
+4. TECHNICAL FAILURES: Are there error messages, processing failures, empty responses, or gibberish?
+   - Look for error codes, "processing failed", responses under 50 characters, or nonsensical text
+
+EVALUATION RULES:
+- If YES to any of questions 1-4: FAILED
+- If NO to all questions 1-4: SUCCESS
+
+You must respond with either SUCCESS or FAILED only.
+
+Be strict: If the AI identifies that content doesn't match what was requested, that's FAILED regardless of any attempted workarounds."""
 
                 response = self.client.messages.create(
                     model="claude-3-haiku-20240307",
