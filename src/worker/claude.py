@@ -200,7 +200,7 @@ Respond: SUCCESS or FAILED"""
 
                 response = self.client.messages.create(
                     model="claude-3-haiku-20240307",
-                    max_tokens=10,
+                    max_tokens=50,  # Increase to see Haiku's reasoning
                     temperature=0.0,
                     system="You are an intelligent quality evaluator for automated workflows. Assess whether the AI response successfully fulfills the original request using semantic understanding, not pattern matching. Consider content alignment, completeness, and whether the deliverables match what was specifically asked for.",
                     messages=[{"role": "user", "content": assessment_prompt}]
@@ -208,7 +208,8 @@ Respond: SUCCESS or FAILED"""
                 
                 result = response.content[0].text.strip().upper()
                 
-                # DEBUG: Log what we're assessing and why it failed
+                # DEBUG: Log Haiku's full reasoning
+                logger.info(f"Quality assessment reasoning: {response.content[0].text}")
                 logger.info(f"Quality assessment input (first 500 chars): {analysis_result[:500]}")
                 logger.info(f"Quality assessment result: {result}")
                 
