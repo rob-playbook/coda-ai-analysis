@@ -173,24 +173,30 @@ class ClaudeService:
             # Add timeout protection - quality assessment should not break main analysis
             async with asyncio.timeout(15):  # 15-second timeout for quality assessment
                 logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
-                assessment_prompt = f"""You are evaluating whether an AI analysis successfully completed the requested task.
+                assessment_prompt = f"""You are evaluating contract fulfillment for an automated business workflow.
 
 ORIGINAL REQUEST: {request_data.user_prompt[:500]}
 
 AI RESPONSE: {analysis_result[:10000]}
 
-Evaluate these failure conditions:
-1. Content mismatch: Does the AI indicate the provided content type doesn't match what was requested?
-2. Refusal to analyze: Does the AI refuse to complete the analysis for any reason?
-3. Seeking clarification: Does the AI ask questions or offer options instead of delivering analysis?
-4. Technical failure: Does the response contain error messages or indicate processing failed?
-5. Prompt-output mismatch: Does the delivered output fail to address what the prompt specifically requested?
-6. Incomplete delivery: Does the response format, scope, or depth fail to match what the prompt asked for?
+TASK: Determine if the AI response can serve as a direct substitute for the requested deliverable.
 
-If ANY of these conditions are met, respond: FAILED
-If the AI successfully completed the requested analysis, respond: SUCCESS
+KEY QUESTIONS:
+1. What specific deliverable was requested? (e.g., "research brief review", "financial analysis", "interview summary")
+2. Did the AI deliver that exact deliverable using the expected content type?
+3. Did the AI identify any reason why it cannot fulfill the request as specified?
 
-Use your intelligence to assess the MEANING and INTENT, not exact phrase matching."""
+EVALUATION RULES:
+- If the AI states the content type doesn't match what's needed → FAILED
+- If the AI says it will "infer" or "work around" missing elements → FAILED  
+- If the AI offers alternatives instead of the requested deliverable → FAILED
+- If the AI identifies limitations that prevent direct fulfillment → FAILED
+
+SUCCESS requires: Complete, direct fulfillment of the specific request without caveats, workarounds, or content type issues.
+
+Can this response serve as a drop-in replacement for the requested deliverable?
+
+Respond: SUCCESS or FAILED"""
 
                 response = self.client.messages.create(
                     model="claude-3-haiku-20240307",
