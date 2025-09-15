@@ -189,7 +189,8 @@ pack.addFormula({
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        timeoutSeconds: 45  // Increase timeout for render service
       });
 
       return JSON.stringify(response.body);
@@ -220,7 +221,8 @@ pack.addFormula({
     try {
       const response = await context.fetcher.fetch({
         method: "GET",
-        url: `https://coda-ai-web.onrender.com/response/${jobId}`
+        url: `https://coda-ai-web.onrender.com/response/${jobId}`,
+        timeoutSeconds: 30  // Timeout for results check
       });
 
       return JSON.stringify(response.body);

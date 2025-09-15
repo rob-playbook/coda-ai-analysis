@@ -53,23 +53,23 @@ class ClaudeService:
                 # IMPORTANT: Claude API requires temperature=1 when thinking is enabled
                 api_params["temperature"] = 1.0
                 
-                logger.info(f"Extended thinking enabled with budget: {api_params['thinking']['budget_tokens']}, temperature forced to 1.0")
+                # logger.info(f"Extended thinking enabled with budget: {api_params['thinking']['budget_tokens']}, temperature forced to 1.0")
                 # NOTE: include_thinking is NOT sent to Claude API - it's used for post-processing
             else:
                 # Use requested temperature for normal operation
                 api_params["temperature"] = max(0.0, min(1.0, request_data.temperature))
             
-            logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
-            logger.info(f"API parameters: max_tokens={api_params['max_tokens']}, temperature={api_params.get('temperature', 'default')}")
-            logger.info(f"User prompt length: {len(request_data.user_prompt)} characters")
-            logger.info(f"System prompt length: {len(request_data.system_prompt) if request_data.system_prompt else 0} characters")
+            # logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
+            # logger.info(f"API parameters: max_tokens={api_params['max_tokens']}, temperature={api_params.get('temperature', 'default')}")
+            # logger.info(f"User prompt length: {len(request_data.user_prompt)} characters")
+            # logger.info(f"System prompt length: {len(request_data.system_prompt) if request_data.system_prompt else 0} characters")
             start_time = time.time()
             
             # Add timeout protection to main API calls
             async with asyncio.timeout(600):  # 10-minute timeout for main analysis
                 # Use streaming for long requests to avoid 10-minute limit
                 if request_data.max_tokens > 20000:  # Use streaming for large responses
-                    logger.info("Using streaming for large response")
+                    # logger.info("Using streaming for large response")
                     result_parts = []
                     
                     with self.client.messages.stream(**api_params) as stream:
@@ -85,84 +85,87 @@ class ClaudeService:
             
             end_time = time.time()
             
-            # === COMPREHENSIVE RESPONSE LOGGING ===
-            logger.info(f"Claude API responded in {end_time - start_time:.2f}s")
-            logger.info(f"Response stop_reason: {getattr(response, 'stop_reason', 'not available')}")
-            logger.info(f"Response usage: {getattr(response, 'usage', 'not available')}")
-            logger.info(f"Response content blocks: {len(response.content)}")
+            # === ESSENTIAL RESPONSE LOGGING ===
+            # logger.info(f"Claude API responded in {end_time - start_time:.2f}s")
+            # logger.info(f"Response stop_reason: {getattr(response, 'stop_reason', 'not available')}")
+            # logger.info(f"Response usage: {getattr(response, 'usage', 'not available')}")
+            # logger.info(f"Response content blocks: {len(response.content)}")
             
-            # Log each content block
-            for i, block in enumerate(response.content):
-                block_type = getattr(block, 'type', 'unknown')
-                if hasattr(block, 'text'):
-                    text_length = len(block.text)
-                    logger.info(f"Content block {i}: type={block_type}, length={text_length} chars")
-                    logger.info(f"Block {i} starts: {repr(block.text[:100])}")
-                    logger.info(f"Block {i} ends: {repr(block.text[-100:])}")
-                else:
-                    logger.info(f"Content block {i}: type={block_type}, no text attribute")
+            # REMOVED: Verbose content block logging for performance
+            # for i, block in enumerate(response.content):
+            #     block_type = getattr(block, 'type', 'unknown')
+            #     if hasattr(block, 'text'):
+            #         text_length = len(block.text)
+            #         logger.info(f"Content block {i}: type={block_type}, length={text_length} chars")
+            #         logger.info(f"Block {i} starts: {repr(block.text[:100])}")
+            #         logger.info(f"Block {i} ends: {repr(block.text[-100:])}")
+            #     else:
+            #         logger.info(f"Content block {i}: type={block_type}, no text attribute")
             
             # Process response content based on response type and thinking settings
             if request_data.max_tokens > 20000:  # Streaming was used - result already extracted
-                logger.info(f"Streaming response processed, final length: {len(result)} chars")
+                # logger.info(f"Streaming response processed, final length: {len(result)} chars")
                 # Result already set from streaming above, no further processing needed
+                pass
             elif request_data.extended_thinking and not request_data.include_thinking:
                 # Strip thinking blocks, keep only text blocks
                 text_blocks = [block.text for block in response.content if block.type == "text"]
                 result = "\n\n".join(text_blocks) if text_blocks else ""
-                logger.info(f"Processed thinking response: {len(text_blocks)} text blocks, final length: {len(result)} chars")
+                # logger.info(f"Processed thinking response: {len(text_blocks)} text blocks, final length: {len(result)} chars")
             else:
                 # Include everything (default behavior) - get all content as text
                 if len(response.content) == 1:
                     # Single content block (normal case)
                     result = response.content[0].text
-                    logger.info(f"Single content block processed, final length: {len(result)} chars")
+                    # logger.info(f"Single content block processed, final length: {len(result)} chars")
                 else:
                     # Multiple content blocks - join all text content
                     all_text = []
                     for i, block in enumerate(response.content):
                         if hasattr(block, 'text'):
                             all_text.append(block.text)
-                            logger.info(f"Added text block {i}: {len(block.text)} chars")
+                            # logger.info(f"Added text block {i}: {len(block.text)} chars")
                         elif hasattr(block, 'thinking'):
                             all_text.append(block.thinking)
-                            logger.info(f"Added thinking block {i}: {len(block.thinking)} chars")
+                            # logger.info(f"Added thinking block {i}: {len(block.thinking)} chars")
                     result = "\n\n".join(all_text)
-                    logger.info(f"Multiple content blocks processed: {len(all_text)} blocks, final length: {len(result)} chars")
+                    # logger.info(f"Multiple content blocks processed: {len(all_text)} blocks, final length: {len(result)} chars")
             
             # === FINAL RESULT VALIDATION ===
-            logger.info(f"FINAL RESULT - Length: {len(result)} characters")
-            logger.info(f"FINAL RESULT - Starts with: {repr(result[:200])}")
-            logger.info(f"FINAL RESULT - Ends with: {repr(result[-200:])}")
+            # logger.info(f"FINAL RESULT - Length: {len(result)} characters")
+            # logger.info(f"FINAL RESULT - Starts with: {repr(result[:200])}")
+            # logger.info(f"FINAL RESULT - Ends with: {repr(result[-200:])}")
             
             # Check for potential truncation indicators
             if result.endswith(('00:', '<v ', 'So\n', '\n00:', '\n<v')):
-                logger.error(f"⚠️  POTENTIAL TRUNCATION DETECTED - Response ends with: {repr(result[-50:])}")
+                # logger.error(f"⚠️  POTENTIAL TRUNCATION DETECTED - Response ends with: {repr(result[-50:])}")
+                pass
             
             # Check if response seems incomplete
             if len(result) < len(chunk_content) * 0.5:  # If response is less than 50% of input
-                logger.warning(f"⚠️  UNUSUALLY SHORT RESPONSE - Input: {len(chunk_content)}, Output: {len(result)}")
+                # logger.warning(f"⚠️  UNUSUALLY SHORT RESPONSE - Input: {len(chunk_content)}, Output: {len(result)}")
+                pass
             
-            logger.info(f"Claude API responded in {end_time - start_time:.2f}s, returned {len(result)} characters")
+            # logger.info(f"Claude API responded in {end_time - start_time:.2f}s, returned {len(result)} characters")
             
             return result
             
         except anthropic.RateLimitError as e:
-            logger.warning(f"Rate limit hit, will retry: {e}")
+            # logger.warning(f"Rate limit hit, will retry: {e}")
             raise
         except anthropic.APIError as e:
             # DEBUG: Log specific details about API errors to understand 504 handling
-            logger.error(f"Claude API error (type: {type(e).__name__}): {e}")
-            if hasattr(e, 'status_code'):
-                logger.error(f"Status code: {e.status_code}")
-            if hasattr(e, 'response'):
-                logger.error(f"Response: {getattr(e.response, 'status_code', 'no status')}")
+            # logger.error(f"Claude API error (type: {type(e).__name__}): {e}")
+            # if hasattr(e, 'status_code'):
+            #     logger.error(f"Status code: {e.status_code}")
+            # if hasattr(e, 'response'):
+            #     logger.error(f"Response: {getattr(e.response, 'status_code', 'no status')}")
             raise
         except asyncio.TimeoutError as e:
-            logger.error(f"Claude API call timed out after 120 seconds: {e}")
+            # logger.error(f"Claude API call timed out after 120 seconds: {e}")
             raise
         except Exception as e:
-            logger.error(f"Unexpected error in Claude API call (type: {type(e).__name__}): {e}")
+            # logger.error(f"Unexpected error in Claude API call (type: {type(e).__name__}): {e}")
             raise
     
     def _inject_content_into_user_prompt(self, user_prompt: str, chunk_content: str) -> str:
@@ -192,7 +195,7 @@ class ClaudeService:
         
         for i, chunk in enumerate(chunks):
             try:
-                logger.info(f"Processing chunk {i+1}/{len(chunks)}")
+                # logger.info(f"Processing chunk {i+1}/{len(chunks)}")
                 result = await self.process_chunk(chunk, request_data)
                 results.append(result)
                 
@@ -201,7 +204,7 @@ class ClaudeService:
                     await asyncio.sleep(2)
                     
             except Exception as e:
-                logger.error(f"Chunk {i+1} failed: {e}")
+                # logger.error(f"Chunk {i+1} failed: {e}")
                 results.append(f"[Error processing chunk {i+1}: {str(e)[:200]}]")
         
         return results
@@ -226,7 +229,7 @@ class ClaudeService:
         try:
             # Add timeout protection - quality assessment should not break main analysis
             async with asyncio.timeout(15):  # 15-second timeout for quality assessment
-                logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
+                # logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
                 assessment_prompt = f"""IMPORTANT: Start your response with either SUCCESS or FAILED as the very first word.
 
 You are evaluating whether an AI completed the requested task.
@@ -271,27 +274,27 @@ Be strict: If the AI identifies that content doesn't match what was requested, t
                 first_word = result.split()[0] if result.split() else result
                 
                 # DEBUG: Log Haiku's full reasoning
-                logger.info(f"Quality assessment reasoning: {response.content[0].text}")
-                logger.info(f"Quality assessment input (first 500 chars): {analysis_result[:500]}")
-                logger.info(f"Quality assessment result: {first_word}")
+                # logger.info(f"Quality assessment reasoning: {response.content[0].text}")
+                # logger.info(f"Quality assessment input (first 500 chars): {analysis_result[:500]}")
+                # logger.info(f"Quality assessment result: {first_word}")
                 
                 if first_word not in ["SUCCESS", "FAILED"]:
-                    logger.warning(f"Unexpected quality assessment result: {first_word}")
+                    # logger.warning(f"Unexpected quality assessment result: {first_word}")
                     return "SUCCESS"  # Default to SUCCESS for unexpected responses
                 
                 return first_word
                 
         except asyncio.TimeoutError:
-            logger.warning("Quality assessment timed out after 15 seconds - defaulting to SUCCESS")
+            # logger.warning("Quality assessment timed out after 15 seconds - defaulting to SUCCESS")
             return "SUCCESS"  # Don't fail main analysis due to quality check timeout
         except Exception as e:
-            logger.warning(f"Quality assessment failed: {e} - defaulting to SUCCESS")
+            # logger.warning(f"Quality assessment failed: {e} - defaulting to SUCCESS")
             return "SUCCESS"  # Don't fail main analysis due to quality check errors
     
     async def ensure_format_consistency(self, combined_result: str, request_data: Any) -> str:
         """Ensure consistent formatting across all chunks with timeout protection"""
         try:
-            logger.info(f"Starting consistency check using model: {request_data.model}")
+            # logger.info(f"Starting consistency check using model: {request_data.model}")
             consistency_prompt = f"""You previously processed this request in chunks. Here was the original prompt:
 {request_data.user_prompt}
 
@@ -314,10 +317,10 @@ Return the full reformatted analysis:
                 return response.content[0].text.strip()
             
         except asyncio.TimeoutError:
-            logger.warning("Format consistency check timed out - returning original result")
+            # logger.warning("Format consistency check timed out - returning original result")
             return combined_result
         except Exception as e:
-            logger.warning(f"Format consistency check failed: {e} - returning original result")
+            # logger.warning(f"Format consistency check failed: {e} - returning original result")
             return combined_result  # Return original if consistency check fails
     
     async def generate_analysis_name(self, analysis_result: str, request_data: Any) -> str:
@@ -329,7 +332,7 @@ Return the full reformatted analysis:
                 len(analysis_result.strip()) < 50):
                 return "Processing Error"
             
-            logger.info("Starting name generation using model: claude-3-haiku-20240307")
+            # logger.info("Starting name generation using model: claude-3-haiku-20240307")
             
             # Extract only the task context from user prompt (ignore system prompt)
             task_context = request_data.user_prompt[:300] if request_data.user_prompt else ""
@@ -370,8 +373,8 @@ Ignore WHO is doing it, focus only on WHAT is being done."""
                 return result if result else "AI Analysis Result"
             
         except asyncio.TimeoutError:
-            logger.warning("Name generation timed out - using default name")
+            # logger.warning("Name generation timed out - using default name")
             return "AI Analysis Result"
         except Exception as e:
-            logger.warning(f"Name generation failed: {e} - using default name")
+            # logger.warning(f"Name generation failed: {e} - using default name")
             return "AI Analysis Result"

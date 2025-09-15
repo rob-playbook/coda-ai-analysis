@@ -36,11 +36,11 @@ class ContentChunker:
                 return [content]
             
             # Content is very large - use chunking with larger chunk sizes
-            logger.info(f"Content requires chunking ({total_tokens:,} tokens > {self.single_chunk_threshold:,})")
+            # logger.info(f"Content requires chunking ({total_tokens:,} tokens > {self.single_chunk_threshold:,})")
             available_tokens = 25000 - prompt_tokens - 500  # Larger chunks for multi-chunk scenarios
             
             if available_tokens <= 1000:
-                logger.warning(f"Very little space left for content after prompt: {available_tokens} tokens")
+                # logger.warning(f"Very little space left for content after prompt: {available_tokens} tokens")
                 available_tokens = 1000  # Minimum content space
             
             return self._chunk_content_by_tokens(content, available_tokens)
@@ -71,7 +71,7 @@ class ContentChunker:
             
             # Check if single block exceeds limit
             if block_tokens > max_content_tokens:
-                logger.warning(f"Single block exceeds token limit: {block_tokens} tokens")
+                # logger.warning(f"Single block exceeds token limit: {block_tokens} tokens")
                 # Add current chunk if not empty
                 if current_chunk:
                     chunks.append(current_chunk.strip())
@@ -128,7 +128,7 @@ class ContentChunker:
             
             # Check if single paragraph exceeds limit
             if para_tokens > max_tokens:
-                logger.warning(f"Single paragraph exceeds token limit: {para_tokens} tokens")
+                # logger.warning(f"Single paragraph exceeds token limit: {para_tokens} tokens")
                 # Add current chunk if not empty
                 if current_chunk:
                     chunks.append(current_chunk.strip())
