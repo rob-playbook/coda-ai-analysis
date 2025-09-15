@@ -35,8 +35,74 @@ pack.addFormula({
     }),
     coda.makeParameter({
       type: coda.ParameterType.String,
-      name: "content",
-      description: "Content to analyze"
+      name: "source1",
+      description: "Source content part 1"
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "source2",
+      description: "Source content part 2",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "source3",
+      description: "Source content part 3",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "source4",
+      description: "Source content part 4",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "source5",
+      description: "Source content part 5",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "source6",
+      description: "Source content part 6",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "target1",
+      description: "Target content part 1",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "target2",
+      description: "Target content part 2",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "target3",
+      description: "Target content part 3",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "target4",
+      description: "Target content part 4",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "target5",
+      description: "Target content part 5",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "target6",
+      description: "Target content part 6",
+      optional: true
     }),
     coda.makeParameter({
       type: coda.ParameterType.String,
@@ -89,12 +155,23 @@ pack.addFormula({
     })
   ],
   resultType: coda.ValueType.String,
-  execute: async function ([cacheBreaker, recordId, content, userPrompt, systemPrompt, model, maxTokens, temperature, extendedThinking, thinkingBudget, includeThinking], context) {
+  execute: async function ([cacheBreaker, recordId, source1, source2, source3, source4, source5, source6, target1, target2, target3, target4, target5, target6, userPrompt, systemPrompt, model, maxTokens, temperature, extendedThinking, thinkingBudget, includeThinking], context) {
     try {
-      // KEY FIX: Include cacheBreaker in the API call to make each request unique
+      // Send split pieces directly to render service (don't reconstruct locally)
       const payload = {
         record_id: recordId + "-" + cacheBreaker,  // Include timestamp in record_id
-        content: content,
+        source1: source1 || '',
+        source2: source2 || null,
+        source3: source3 || null,
+        source4: source4 || null,
+        source5: source5 || null,
+        source6: source6 || null,
+        target1: target1 || null,
+        target2: target2 || null,
+        target3: target3 || null,
+        target4: target4 || null,
+        target5: target5 || null,
+        target6: target6 || null,
         user_prompt: userPrompt,
         system_prompt: systemPrompt || "",
         model: model || "claude-3-7-sonnet-latest",

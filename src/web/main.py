@@ -60,14 +60,17 @@ async def start_analysis(request: PollingRequest):
     NEW: Start analysis - try synchronous first, fallback to async
     """
     try:
+        # Reconstruct content from split pieces
+        content = request.reconstruct_content()
+        
         # Validate request
-        if not request.content or len(request.content.strip()) == 0:
+        if not content or len(content.strip()) == 0:
             raise HTTPException(status_code=400, detail="Content cannot be empty")
         
         if not request.user_prompt or len(request.user_prompt.strip()) == 0:
             raise HTTPException(status_code=400, detail="User prompt cannot be empty")
         
-        if len(request.content) > settings.max_content_size:
+        if len(content) > settings.max_content_size:
             raise HTTPException(
                 status_code=400, 
                 detail=f"Content exceeds maximum size of {settings.max_content_size} characters"
@@ -80,8 +83,8 @@ async def start_analysis(request: PollingRequest):
         try:
             async with asyncio.timeout(40):
                 # Quick analysis for small content
-                if len(request.content) < 10000:  # Small content threshold
-                    chunks = chunker.chunk_content(request.content, request.user_prompt)
+                if len(content) < 10000:  # Small content threshold
+                    chunks = chunker.chunk_content(content, request.user_prompt)
                     if len(chunks) == 1:  # Single chunk - try sync
                         try:
                             result = await claude_service.process_chunk(chunks[0], request)

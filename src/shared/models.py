@@ -35,7 +35,20 @@ class AnalysisRequest(BaseModel):
 class PollingRequest(BaseModel):
     """Request model for polling endpoints (no webhook required)"""
     record_id: str = Field(..., description="Coda record ID for tracking")
-    content: str = Field(..., description="Content to analyze")
+    
+    # SPLIT CONTENT FIELDS (replaces single 'content' field)
+    source1: str = Field(..., description="Source content part 1")
+    source2: Optional[str] = Field(default=None, description="Source content part 2")
+    source3: Optional[str] = Field(default=None, description="Source content part 3")
+    source4: Optional[str] = Field(default=None, description="Source content part 4")
+    source5: Optional[str] = Field(default=None, description="Source content part 5")
+    source6: Optional[str] = Field(default=None, description="Source content part 6")
+    target1: Optional[str] = Field(default=None, description="Target content part 1")
+    target2: Optional[str] = Field(default=None, description="Target content part 2")
+    target3: Optional[str] = Field(default=None, description="Target content part 3")
+    target4: Optional[str] = Field(default=None, description="Target content part 4")
+    target5: Optional[str] = Field(default=None, description="Target content part 5")
+    target6: Optional[str] = Field(default=None, description="Target content part 6")
     
     # PRE-BUILT PROMPTS FROM CODA
     system_prompt: Optional[str] = Field(default=None, description="Complete system prompt built by Coda")
@@ -55,11 +68,28 @@ class PollingRequest(BaseModel):
     template_config: Optional[Dict[str, Any]] = Field(default=None, description="Template metadata")
     project_metadata: Optional[Dict[str, Any]] = Field(default=None, description="Project metadata")
     
+    def reconstruct_content(self) -> str:
+        """Reconstruct content from split pieces"""
+        # Reconstruct source content
+        source_parts = [self.source1 or '']
+        source_parts.extend([part or '' for part in [self.source2, self.source3, self.source4, self.source5, self.source6]])
+        full_source = ''.join(source_parts)
+        
+        # Reconstruct target content
+        target_parts = [part or '' for part in [self.target1, self.target2, self.target3, self.target4, self.target5, self.target6]]
+        full_target = ''.join(target_parts)
+        
+        # Combine into final content format
+        if full_target:
+            return f"**TARGET CONTENT:**\n{full_target}\n\n**SOURCE CONTENT:**\n{full_source}"
+        else:
+            return f"**SOURCE CONTENT:**\n{full_source}"
+    
     def to_analysis_request(self) -> 'AnalysisRequest':
         """Convert to AnalysisRequest for background processing"""
         return AnalysisRequest(
             record_id=self.record_id,
-            content=self.content,
+            content=self.reconstruct_content(),  # Use reconstructed content
             system_prompt=self.system_prompt,
             user_prompt=self.user_prompt,
             model=self.model,
