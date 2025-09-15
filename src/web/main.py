@@ -145,6 +145,7 @@ async def start_analysis(request: PollingRequest):
                         except Exception as sync_error:
                             # logger.warning(f"Sync processing failed, falling back to async: {sync_error}")
                             # Fall through to async processing
+                            pass
         except asyncio.TimeoutError:
             # logger.info("Sync processing timed out, falling back to async")
             pass  # Fall through to async processing
