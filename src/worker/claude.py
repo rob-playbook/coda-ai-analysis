@@ -66,9 +66,22 @@ class ClaudeService:
             start_time = time.time()
             
             # Add timeout protection to main API calls
-            async with asyncio.timeout(120):  # 2-minute timeout for main analysis
-                # Use regular messages.create for all requests (SDK 0.64+ supports thinking parameter)
-                response = self.client.messages.create(**api_params)
+            async with asyncio.timeout(600):  # 10-minute timeout for main analysis
+                # Use streaming for long requests to avoid 10-minute limit
+                if request_data.max_tokens > 20000:  # Use streaming for large responses
+                    logger.info("Using streaming for large response")
+                    result_parts = []
+                    
+                    with self.client.messages.stream(**api_params) as stream:
+                        for text in stream.text_stream:
+                            result_parts.append(text)
+                    
+                    result = ''.join(result_parts)
+                    response = stream.get_final_message()  # Get final message for metadata
+                else:
+                    # Use regular messages.create for smaller requests
+                    response = self.client.messages.create(**api_params)
+                    result = response.content[0].text
             
             end_time = time.time()
             
@@ -89,8 +102,11 @@ class ClaudeService:
                 else:
                     logger.info(f"Content block {i}: type={block_type}, no text attribute")
             
-            # Process response content based on include_thinking flag
-            if request_data.extended_thinking and not request_data.include_thinking:
+            # Process response content based on response type and thinking settings
+            if request_data.max_tokens > 20000:  # Streaming was used - result already extracted
+                logger.info(f"Streaming response processed, final length: {len(result)} chars")
+                # Result already set from streaming above, no further processing needed
+            elif request_data.extended_thinking and not request_data.include_thinking:
                 # Strip thinking blocks, keep only text blocks
                 text_blocks = [block.text for block in response.content if block.type == "text"]
                 result = "\n\n".join(text_blocks) if text_blocks else ""
