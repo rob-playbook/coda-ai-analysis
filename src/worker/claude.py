@@ -60,6 +60,9 @@ class ClaudeService:
                 api_params["temperature"] = max(0.0, min(1.0, request_data.temperature))
             
             logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
+            logger.info(f"API parameters: max_tokens={api_params['max_tokens']}, temperature={api_params.get('temperature', 'default')}")
+            logger.info(f"User prompt length: {len(request_data.user_prompt)} characters")
+            logger.info(f"System prompt length: {len(request_data.system_prompt) if request_data.system_prompt else 0} characters")
             start_time = time.time()
             
             # Add timeout protection to main API calls
@@ -69,25 +72,60 @@ class ClaudeService:
             
             end_time = time.time()
             
+            # === COMPREHENSIVE RESPONSE LOGGING ===
+            logger.info(f"Claude API responded in {end_time - start_time:.2f}s")
+            logger.info(f"Response stop_reason: {getattr(response, 'stop_reason', 'not available')}")
+            logger.info(f"Response usage: {getattr(response, 'usage', 'not available')}")
+            logger.info(f"Response content blocks: {len(response.content)}")
+            
+            # Log each content block
+            for i, block in enumerate(response.content):
+                block_type = getattr(block, 'type', 'unknown')
+                if hasattr(block, 'text'):
+                    text_length = len(block.text)
+                    logger.info(f"Content block {i}: type={block_type}, length={text_length} chars")
+                    logger.info(f"Block {i} starts: {repr(block.text[:100])}")
+                    logger.info(f"Block {i} ends: {repr(block.text[-100:])}")
+                else:
+                    logger.info(f"Content block {i}: type={block_type}, no text attribute")
+            
             # Process response content based on include_thinking flag
             if request_data.extended_thinking and not request_data.include_thinking:
                 # Strip thinking blocks, keep only text blocks
                 text_blocks = [block.text for block in response.content if block.type == "text"]
                 result = "\n\n".join(text_blocks) if text_blocks else ""
+                logger.info(f"Processed thinking response: {len(text_blocks)} text blocks, final length: {len(result)} chars")
             else:
                 # Include everything (default behavior) - get all content as text
                 if len(response.content) == 1:
                     # Single content block (normal case)
                     result = response.content[0].text
+                    logger.info(f"Single content block processed, final length: {len(result)} chars")
                 else:
                     # Multiple content blocks - join all text content
                     all_text = []
-                    for block in response.content:
+                    for i, block in enumerate(response.content):
                         if hasattr(block, 'text'):
                             all_text.append(block.text)
+                            logger.info(f"Added text block {i}: {len(block.text)} chars")
                         elif hasattr(block, 'thinking'):
                             all_text.append(block.thinking)
+                            logger.info(f"Added thinking block {i}: {len(block.thinking)} chars")
                     result = "\n\n".join(all_text)
+                    logger.info(f"Multiple content blocks processed: {len(all_text)} blocks, final length: {len(result)} chars")
+            
+            # === FINAL RESULT VALIDATION ===
+            logger.info(f"FINAL RESULT - Length: {len(result)} characters")
+            logger.info(f"FINAL RESULT - Starts with: {repr(result[:200])}")
+            logger.info(f"FINAL RESULT - Ends with: {repr(result[-200:])}")
+            
+            # Check for potential truncation indicators
+            if result.endswith(('00:', '<v ', 'So\n', '\n00:', '\n<v')):
+                logger.error(f"⚠️  POTENTIAL TRUNCATION DETECTED - Response ends with: {repr(result[-50:])}")
+            
+            # Check if response seems incomplete
+            if len(result) < len(chunk_content) * 0.5:  # If response is less than 50% of input
+                logger.warning(f"⚠️  UNUSUALLY SHORT RESPONSE - Input: {len(chunk_content)}, Output: {len(result)}")
             
             logger.info(f"Claude API responded in {end_time - start_time:.2f}s, returned {len(result)} characters")
             

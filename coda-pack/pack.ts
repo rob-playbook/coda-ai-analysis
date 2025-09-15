@@ -40,6 +40,12 @@ pack.addFormula({
     }),
     coda.makeParameter({
       type: coda.ParameterType.String,
+      name: "userPrompt",
+      description: "User prompt"
+    }),
+    // OPTIONAL PARAMETERS - All optional parameters must come after required ones
+    coda.makeParameter({
+      type: coda.ParameterType.String,
       name: "source2",
       description: "Source content part 2",
       optional: true
@@ -106,11 +112,6 @@ pack.addFormula({
     }),
     coda.makeParameter({
       type: coda.ParameterType.String,
-      name: "userPrompt",
-      description: "User prompt"
-    }),
-    coda.makeParameter({
-      type: coda.ParameterType.String,
       name: "systemPrompt",
       description: "System prompt",
       optional: true
@@ -155,7 +156,7 @@ pack.addFormula({
     })
   ],
   resultType: coda.ValueType.String,
-  execute: async function ([cacheBreaker, recordId, source1, source2, source3, source4, source5, source6, target1, target2, target3, target4, target5, target6, userPrompt, systemPrompt, model, maxTokens, temperature, extendedThinking, thinkingBudget, includeThinking], context) {
+  execute: async function ([cacheBreaker, recordId, source1, userPrompt, source2, source3, source4, source5, source6, target1, target2, target3, target4, target5, target6, systemPrompt, model, maxTokens, temperature, extendedThinking, thinkingBudget, includeThinking], context) {
     try {
       // Send split pieces directly to render service (don't reconstruct locally)
       const payload = {
