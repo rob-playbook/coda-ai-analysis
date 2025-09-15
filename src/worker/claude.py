@@ -26,7 +26,7 @@ class ClaudeService:
             # Build API parameters from Coda's pre-built prompts
             api_params = {
                 "model": request_data.model,
-                "max_tokens": min(request_data.max_tokens, 8192),
+                "max_tokens": request_data.max_tokens,
                 "messages": [
                     {
                         "role": "user", 
