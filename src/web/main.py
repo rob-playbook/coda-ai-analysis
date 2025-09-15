@@ -90,8 +90,8 @@ async def start_analysis(request: PollingRequest):
                             result = await claude_service.process_chunk(chunks[0], request)
                             
                             # ADD QUALITY ASSESSMENT TO SYNC PATH TOO (consistency with async path)
-                            quality_status = await claude_service.assess_quality(result)
-                            analysis_name = await claude_service.generate_analysis_name(result)
+                            quality_status = await claude_service.assess_quality(result, request)
+                            analysis_name = await claude_service.generate_analysis_name(result, request)
                             
                             # Handle failed quality assessment by returning actual Claude response as error
                             if quality_status == "FAILED":
