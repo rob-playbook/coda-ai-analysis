@@ -49,7 +49,7 @@ async def health_check():
             "timestamp": time.time()
         }
     except Exception as e:
-        # logger.error(f"Health check failed: {e}")
+        logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=503, detail="Service unhealthy")
 
 # =================== POLLING ENDPOINTS ===================
@@ -143,14 +143,14 @@ async def start_analysis(request: PollingRequest):
                                 "processing_time_seconds": "immediate"
                             }
                         except Exception as sync_error:
-                            # logger.warning(f"Sync processing failed, falling back to async: {sync_error}")
+                            logger.warning(f"Sync processing failed, falling back to async: {sync_error}")
                             # Fall through to async processing
                             pass
         except asyncio.TimeoutError:
-            # logger.info("Sync processing timed out, falling back to async")
+            logger.info("Sync processing timed out, falling back to async")
             pass  # Fall through to async processing
         except Exception as e:
-            # logger.warning(f"Sync processing error, falling back to async: {e}")
+            logger.warning(f"Sync processing error, falling back to async: {e}")
             pass  # Fall through to async processing
         
         # Async processing for large content or timeout
@@ -173,7 +173,7 @@ async def start_analysis(request: PollingRequest):
         }
         
     except Exception as e:
-        # logger.error(f"Analysis request failed: {e}")
+        logger.error(f"Analysis request failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/response/{job_id}")
@@ -227,7 +227,7 @@ async def get_analysis_result(job_id: str):
     except HTTPException:
         raise  # Re-raise HTTP exceptions
     except Exception as e:
-        # logger.error(f"Result retrieval failed: {e}")
+        logger.error(f"Result retrieval failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # =================== WEBHOOK ENDPOINTS (EXISTING) ===================
@@ -265,7 +265,7 @@ async def process_analysis(request: AnalysisRequest):
         # Queue job for background processing
         job_queue.enqueue_job(job)
         
-        # logger.info(f"Analysis job queued: {job_id} for record {request.record_id}")
+        logger.info(f"Analysis job queued: {job_id} for record {request.record_id}")
         
         # Return immediate response
         return {
@@ -277,7 +277,7 @@ async def process_analysis(request: AnalysisRequest):
         }
         
     except Exception as e:
-        # logger.error(f"Analysis request failed: {e}")
+        logger.error(f"Analysis request failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/job/{job_id}")
@@ -297,7 +297,7 @@ async def get_job_status(job_id: str):
             "retry_count": job.retry_count
         }
     except Exception as e:
-        # logger.error(f"Job status check failed: {e}")
+        logger.error(f"Job status check failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

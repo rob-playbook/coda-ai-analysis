@@ -59,17 +59,17 @@ class ClaudeService:
                 # Use requested temperature for normal operation
                 api_params["temperature"] = max(0.0, min(1.0, request_data.temperature))
             
-            # logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
-            # logger.info(f"API parameters: max_tokens={api_params['max_tokens']}, temperature={api_params.get('temperature', 'default')}")
-            # logger.info(f"User prompt length: {len(request_data.user_prompt)} characters")
-            # logger.info(f"System prompt length: {len(request_data.system_prompt) if request_data.system_prompt else 0} characters")
+            logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
+            logger.info(f"API parameters: max_tokens={api_params['max_tokens']}, temperature={api_params.get('temperature', 'default')}")
+            logger.info(f"User prompt length: {len(request_data.user_prompt)} characters")
+            logger.info(f"System prompt length: {len(request_data.system_prompt) if request_data.system_prompt else 0} characters")
             start_time = time.time()
             
             # Add timeout protection to main API calls
             async with asyncio.timeout(600):  # 10-minute timeout for main analysis
                 # Use streaming for long requests to avoid 10-minute limit
                 if request_data.max_tokens > 20000:  # Use streaming for large responses
-                    # logger.info("Using streaming for large response")
+                    logger.info("Using streaming for large response")
                     result_parts = []
                     
                     with self.client.messages.stream(**api_params) as stream:
@@ -86,8 +86,8 @@ class ClaudeService:
             end_time = time.time()
             
             # === ESSENTIAL RESPONSE LOGGING ===
-            # logger.info(f"Claude API responded in {end_time - start_time:.2f}s")
-            # logger.info(f"Response stop_reason: {getattr(response, 'stop_reason', 'not available')}")
+            logger.info(f"Claude API responded in {end_time - start_time:.2f}s")
+            logger.info(f"Response stop_reason: {getattr(response, 'stop_reason', 'not available')}")
             # logger.info(f"Response usage: {getattr(response, 'usage', 'not available')}")
             # logger.info(f"Response content blocks: {len(response.content)}")
             
@@ -151,21 +151,20 @@ class ClaudeService:
             return result
             
         except anthropic.RateLimitError as e:
-            # logger.warning(f"Rate limit hit, will retry: {e}")
+            logger.warning(f"Rate limit hit, will retry: {e}")
             raise
         except anthropic.APIError as e:
-            # DEBUG: Log specific details about API errors to understand 504 handling
-            # logger.error(f"Claude API error (type: {type(e).__name__}): {e}")
-            # if hasattr(e, 'status_code'):
-            #     logger.error(f"Status code: {e.status_code}")
-            # if hasattr(e, 'response'):
-            #     logger.error(f"Response: {getattr(e.response, 'status_code', 'no status')}")
+            logger.error(f"Claude API error (type: {type(e).__name__}): {e}")
+            if hasattr(e, 'status_code'):
+                logger.error(f"Status code: {e.status_code}")
+            if hasattr(e, 'response'):
+                logger.error(f"Response: {getattr(e.response, 'status_code', 'no status')}")
             raise
         except asyncio.TimeoutError as e:
-            # logger.error(f"Claude API call timed out after 120 seconds: {e}")
+            logger.error(f"Claude API call timed out after 120 seconds: {e}")
             raise
         except Exception as e:
-            # logger.error(f"Unexpected error in Claude API call (type: {type(e).__name__}): {e}")
+            logger.error(f"Unexpected error in Claude API call (type: {type(e).__name__}): {e}")
             raise
     
     def _inject_content_into_user_prompt(self, user_prompt: str, chunk_content: str) -> str:
@@ -195,7 +194,7 @@ class ClaudeService:
         
         for i, chunk in enumerate(chunks):
             try:
-                # logger.info(f"Processing chunk {i+1}/{len(chunks)}")
+                logger.info(f"Processing chunk {i+1}/{len(chunks)}")
                 result = await self.process_chunk(chunk, request_data)
                 results.append(result)
                 
@@ -204,7 +203,7 @@ class ClaudeService:
                     await asyncio.sleep(2)
                     
             except Exception as e:
-                # logger.error(f"Chunk {i+1} failed: {e}")
+                logger.error(f"Chunk {i+1} failed: {e}")
                 results.append(f"[Error processing chunk {i+1}: {str(e)[:200]}]")
         
         return results

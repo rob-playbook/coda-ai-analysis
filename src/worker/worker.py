@@ -62,7 +62,7 @@ class AnalysisWorker:
                     await asyncio.sleep(1)
                     
             except Exception as e:
-                # logger.error(f"Worker loop error: {e}")
+                logger.error(f"Worker loop error: {e}")
                 await asyncio.sleep(5)  # Wait before retrying
         
         # logger.info("Analysis worker stopped")
@@ -108,7 +108,7 @@ class AnalysisWorker:
             )
             
             chunk_count = len(chunks)
-            # logger.info(f"Content split into {chunk_count} chunks for job {job.job_id}")
+            logger.info(f"Content split into {chunk_count} chunks for job {job.job_id}")
             
             # Step 2: Process chunks through Claude API
             results = await self.claude_service.process_chunks_sequential(
@@ -122,7 +122,7 @@ class AnalysisWorker:
                 analysis_name = "Processing Error"
                 error_message = self._extract_error_message(results)
                 
-                # logger.error(f"Job {job.job_id} failed due to processing errors: {error_message}")
+                logger.error(f"Job {job.job_id} failed due to processing errors: {error_message}")
                 
                 # Store error result
                 processing_time = time.time() - start_time
@@ -192,24 +192,23 @@ class AnalysisWorker:
             if webhook_success:
                 job.status = JobStatus.SUCCESS
                 self.job_queue.complete_job(job)
-                # logger.info(f"Job {job.job_id} completed successfully in {processing_time:.2f}s")
             else:
                 # Webhook failed - retry job if possible
                 if job.retry_count < job.max_retries:
                     self.job_queue.retry_job(job)
-                    # logger.warning(f"Job {job.job_id} webhook failed, queued for retry")
+                    logger.warning(f"Job {job.job_id} webhook failed, queued for retry")
                 else:
                     self.job_queue.fail_job(job, "Webhook delivery failed after max retries")
-                    # logger.error(f"Job {job.job_id} failed - webhook delivery failed")
+                    logger.error(f"Job {job.job_id} failed - webhook delivery failed")
             
         except Exception as e:
             error_message = f"Job processing failed: {str(e)}"
-            # logger.error(f"Job {job.job_id} error: {error_message}")
+            logger.error(f"Job {job.job_id} error: {error_message}")
             
             # Try to retry job if possible
             if job.retry_count < job.max_retries:
                 self.job_queue.retry_job(job)
-                # logger.info(f"Job {job.job_id} queued for retry (attempt {job.retry_count + 1})")
+                logger.info(f"Job {job.job_id} queued for retry (attempt {job.retry_count + 1})")
             else:
                 self.job_queue.fail_job(job, error_message)
                 
@@ -229,7 +228,7 @@ class AnalysisWorker:
                         await self._send_coda_webhook_notification(job.job_id, "FAILED")
                         
                 except Exception as webhook_error:
-                    # logger.error(f"Failed to send error webhook: {webhook_error}")
+                    logger.error(f"Failed to send error webhook: {webhook_error}")
                     pass
     
     def _combine_chunk_results(self, results: list) -> str:
@@ -246,7 +245,7 @@ class AnalysisWorker:
         Just notifies that analysis is complete - Coda fetches data via CheckResults
         """
         if not self.coda_webhook_url or not self.coda_api_token:
-            # logger.warning("Coda webhook URL or API token not configured")
+            logger.warning("Coda webhook URL or API token not configured")
             return True  # Don't fail job if webhook not configured
         
         for attempt in range(max_retries):
@@ -270,14 +269,14 @@ class AnalysisWorker:
                         headers=headers
                     ) as response:
                         if response.status in [200, 202]:  # Accept both OK and Accepted
-                            # logger.info(f"Coda webhook notification sent successfully for job {job_id}")
+                            logger.info(f"Coda webhook notification sent successfully for job {job_id}")
                             return True
                         else:
                             response_text = await response.text()
-                            # logger.warning(f"Coda webhook failed with status {response.status}: {response_text}, attempt {attempt + 1}")
+                            logger.warning(f"Coda webhook failed with status {response.status}: {response_text}, attempt {attempt + 1}")
                             
             except Exception as e:
-                # logger.error(f"Coda webhook error (attempt {attempt + 1}): {e}")
+                logger.error(f"Coda webhook error (attempt {attempt + 1}): {e}")
                 pass
             
             # Wait before retry (exponential backoff)
@@ -285,7 +284,7 @@ class AnalysisWorker:
                 wait_time = (2 ** attempt) * 2
                 await asyncio.sleep(wait_time)
         
-        # logger.error(f"Coda webhook notification failed for job {job_id} after {max_retries} attempts")
+        logger.error(f"Coda webhook notification failed for job {job_id} after {max_retries} attempts")
         return False
     
     async def _send_legacy_webhook(self, webhook_url: str, result: AnalysisResult, max_retries: int = 3) -> bool:
@@ -298,14 +297,14 @@ class AnalysisWorker:
                     
                     async with session.post(webhook_url, json=payload) as response:
                         if response.status == 200:
-                            # logger.info(f"Legacy webhook sent successfully for record {result.record_id}")
+                            logger.info(f"Legacy webhook sent successfully for record {result.record_id}")
                             return True
                         else:
-                            # logger.warning(f"Legacy webhook failed with status {response.status}, attempt {attempt + 1}")
+                            logger.warning(f"Legacy webhook failed with status {response.status}, attempt {attempt + 1}")
                             pass
                             
             except Exception as e:
-                # logger.error(f"Legacy webhook error (attempt {attempt + 1}): {e}")
+                logger.error(f"Legacy webhook error (attempt {attempt + 1}): {e}")
                 pass
             
             # Wait before retry (exponential backoff)
@@ -317,7 +316,7 @@ class AnalysisWorker:
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully"""
-        # logger.info(f"Received signal {signum}, shutting down gracefully...")
+        logger.info(f"Received signal {signum}, shutting down gracefully...")
         self.running = False
 
 async def main():
