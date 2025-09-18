@@ -300,6 +300,75 @@ async def get_job_status(job_id: str):
         logger.error(f"Job status check failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/queue/status")
+async def get_queue_status():
+    """Get current queue status with lightweight calculation"""
+    try:
+        # Count pending jobs (fast)
+        pending_count = job_queue.redis.llen(job_queue.job_queue_key)
+        
+        # Count processing jobs (fast)
+        processing_count = job_queue.redis.scard(job_queue.processing_key)
+        
+        # LIGHTWEIGHT WAIT TIME CALCULATION (no expensive scans)
+        estimated_wait = 0
+        if pending_count > 0:
+            # Simple tiered estimates - no Redis scanning
+            if pending_count <= 2:
+                estimated_wait = pending_count * 1.5  # Small jobs: 1.5 min each
+            elif pending_count <= 5:
+                estimated_wait = pending_count * 2.5  # Medium load: 2.5 min each
+            elif pending_count <= 10:
+                estimated_wait = pending_count * 3.5  # Higher load: 3.5 min each
+            else:
+                estimated_wait = pending_count * 5    # High load: 5 min each
+        
+        # Add small buffer if jobs are currently running
+        if processing_count > 0 and pending_count > 0:
+            estimated_wait += 0.5  # Add 30 second buffer
+        
+        return {
+            "queue_length": pending_count,
+            "currently_processing": processing_count,
+            "estimated_wait_minutes": max(0, round(estimated_wait, 1)),
+            "status": "operational" if pending_count < 10 else "busy"
+        }
+    except Exception as e:
+        logger.error(f"Queue status check failed: {e}")
+        return {
+            "status": "unknown", 
+            "error": str(e),
+            "queue_length": 0,
+            "currently_processing": 0,
+            "estimated_wait_minutes": 0
+        }
+
+@app.get("/queue/user/{record_id_prefix}")
+async def get_user_queue_position(record_id_prefix: str):
+    """Check if user has jobs in queue"""
+    try:
+        # Get all job IDs in queue
+        job_ids = job_queue.redis.lrange(job_queue.job_queue_key, 0, -1)
+        
+        user_positions = []
+        for i, job_id in enumerate(job_ids):
+            job = job_queue.get_job(job_id)
+            if job and job.record_id.startswith(record_id_prefix):
+                user_positions.append({
+                    "job_id": job_id,
+                    "position": i + 1,
+                    "record_id": job.record_id
+                })
+        
+        return {
+            "user_jobs_in_queue": len(user_positions),
+            "positions": user_positions,
+            "total_queue_length": len(job_ids)
+        }
+    except Exception as e:
+        logger.error(f"User queue check failed: {e}")
+        return {"error": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

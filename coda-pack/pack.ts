@@ -205,6 +205,80 @@ pack.addFormula({
   }
 });
 
+// Queue Length - returns just the number
+pack.addFormula({
+  name: "QueueLength",
+  description: "Get current queue length (number of pending analyses)",
+  parameters: [],
+  resultType: coda.ValueType.Number,
+  execute: async function ([], context) {
+    try {
+      const response = await context.fetcher.fetch({
+        method: "GET",
+        url: "https://coda-ai-web.onrender.com/queue/status",
+        timeoutSeconds: 10
+      });
+      
+      return response.body.queue_length || 0;
+    } catch (error) {
+      return 0; // Return 0 if can't connect
+    }
+  }
+});
+
+// Queue Status - returns readable text
+pack.addFormula({
+  name: "QueueStatus",
+  description: "Get current queue status as readable text",
+  parameters: [],
+  resultType: coda.ValueType.String,
+  execute: async function ([], context) {
+    try {
+      const response = await context.fetcher.fetch({
+        method: "GET",
+        url: "https://coda-ai-web.onrender.com/queue/status",
+        timeoutSeconds: 10
+      });
+      
+      const data = response.body;
+      const waitTime = data.estimated_wait_minutes || 0;
+      const queueLength = data.queue_length || 0;
+      const processing = data.currently_processing || 0;
+      
+      if (queueLength === 0 && processing === 0) {
+        return "✅ Queue empty - analyses will run immediately";
+      } else if (queueLength === 0 && processing > 0) {
+        return `⏳ ${processing} analysis running - new requests start immediately`;
+      } else {
+        return `📋 ${queueLength} queued, ${processing} processing - estimated wait: ${waitTime} min`;
+      }
+    } catch (error) {
+      return `❌ Cannot check queue status: ${error.message}`;
+    }
+  }
+});
+
+// Wait Time - returns estimated minutes
+pack.addFormula({
+  name: "EstimatedWaitTime",
+  description: "Get estimated wait time in minutes",
+  parameters: [],
+  resultType: coda.ValueType.Number,
+  execute: async function ([], context) {
+    try {
+      const response = await context.fetcher.fetch({
+        method: "GET",
+        url: "https://coda-ai-web.onrender.com/queue/status",
+        timeoutSeconds: 10
+      });
+      
+      return response.body.estimated_wait_minutes || 0;
+    } catch (error) {
+      return 0;
+    }
+  }
+});
+
 // CheckResults formula 
 pack.addFormula({
   name: "CheckResults",
