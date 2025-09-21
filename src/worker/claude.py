@@ -348,6 +348,41 @@ Return the full reformatted analysis:
                 if not clean_prompt:
                     clean_prompt = "Please analyze the provided documents and summarize their key content."
             
+            # Remove content placeholders since files are provided as document blocks
+            content_placeholders = [
+                "{{CONTENT}}", "{{CHUNK_CONTENT}}", "{{ANALYSIS_CONTENT}}", "{{DATA}}",
+                "SOURCE CONTENT:", "TARGET CONTENT:", "**SOURCE CONTENT:**", "**TARGET CONTENT:**"
+            ]
+            
+            for placeholder in content_placeholders:
+                clean_prompt = clean_prompt.replace(placeholder, "").strip()
+            
+            # Remove URL references since files are sent as document blocks
+            import re
+            # Remove https URLs completely
+            clean_prompt = re.sub(r'https://[^\s]+', '', clean_prompt)
+            # Remove references to accessing URLs
+            url_phrases = [
+                "access the content at", "view the content at", "analyze the content at",
+                "summarize the content at", "review the content at", "examine the content at",
+                "at the provided URL", "from the URL", "in the URL", "the URL contains",
+                "cannot access", "cannot view", "provided URL", "at this URL"
+            ]
+            for phrase in url_phrases:
+                clean_prompt = re.sub(phrase, '', clean_prompt, flags=re.IGNORECASE)
+            
+            # Clean up any leftover formatting and extra whitespace
+            clean_prompt = re.sub(r'\s+', ' ', clean_prompt).strip()
+            
+            # If prompt is now empty or too short, use a default
+            if len(clean_prompt.strip()) < 10:
+                clean_prompt = "Please analyze the provided documents and summarize their key content."
+            
+            logger.info(f"Clean prompt for file processing: {clean_prompt[:200]}...")
+            
+            # CRITICAL: Log what we're actually sending to Claude
+            logger.info(f"Building content array with {len(files_data)} files")
+            
             # Build content array with clean text prompt + document blocks
             content = [{
                 "type": "text",
@@ -355,15 +390,23 @@ Return the full reformatted analysis:
             }]
             
             # Add each file as a document block
-            for file_info in files_data:
-                content.append({
+            for i, file_info in enumerate(files_data):
+                if 'base64_data' not in file_info:
+                    raise Exception(f"File {i+1} missing base64_data - download may have failed")
+                
+                doc_block = {
                     "type": "document",
                     "source": {
                         "type": "base64",
                         "media_type": file_info['mime_type'],
                         "data": file_info['base64_data']
                     }
-                })
+                }
+                content.append(doc_block)
+                logger.info(f"Added document block {i+1}: {file_info['mime_type']}, {len(file_info['base64_data'])} chars base64")
+            
+            # CRITICAL: Log the final content structure
+            logger.info(f"Final content array: {len(content)} blocks (1 text + {len(files_data)} documents)")
             
             # Build API parameters
             api_params = {
