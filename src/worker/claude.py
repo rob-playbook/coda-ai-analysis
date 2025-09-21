@@ -333,10 +333,25 @@ Return the full reformatted analysis:
         Process files through Claude API using document content blocks
         """
         try:
-            # Build content array with text prompt + document blocks
+            # For file processing, use ONLY the user_prompt (not the FILE_URL content)
+            # The files themselves are sent as document blocks
+            clean_prompt = request_data.user_prompt
+            
+            # Remove any FILE_URL references that might have leaked into the prompt
+            if "FILE_URL:" in clean_prompt:
+                # Split by common separators and filter out FILE_URL lines
+                lines = clean_prompt.split('\n')
+                clean_lines = [line for line in lines if not line.strip().startswith('FILE_URL:')]
+                clean_prompt = '\n'.join(clean_lines).strip()
+                
+                # If the entire prompt was FILE_URL content, use a default instruction
+                if not clean_prompt:
+                    clean_prompt = "Please analyze the provided documents and summarize their key content."
+            
+            # Build content array with clean text prompt + document blocks
             content = [{
                 "type": "text",
-                "text": request_data.user_prompt
+                "text": clean_prompt
             }]
             
             # Add each file as a document block
