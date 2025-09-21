@@ -62,8 +62,17 @@ async def start_analysis(request: PollingRequest):
     NEW: Start analysis - try synchronous first, fallback to async
     """
     try:
+        # BASIC DEBUGGING - Log that request arrived
+        logger.info(f"=== REQUEST RECEIVED ===")
+        logger.info(f"Record ID: {request.record_id}")
+        logger.info(f"Source1: {request.source1[:100] if request.source1 else 'None'}...")
+        logger.info(f"Source2: {request.source2[:100] if request.source2 else 'None'}...")
+        logger.info(f"User prompt: {request.user_prompt[:100] if request.user_prompt else 'None'}...")
+        
         # Reconstruct content from split pieces
         content = request.reconstruct_content()
+        logger.info(f"Reconstructed content length: {len(content)}")
+        logger.info(f"Reconstructed content starts with: {content[:100]}...")
         
         # Validate request
         if not content or len(content.strip()) == 0:
