@@ -87,10 +87,14 @@ async def start_analysis(request: PollingRequest):
         # FILE PROCESSING PATH
         if is_file_request:
             logger.info(f"File processing detected for job {job_id}")
+            logger.info(f"Raw file content: {content[:200]}...")  # Debug the raw content
             
             # Extract file URLs
             file_urls = file_processor.extract_file_urls(content)
+            logger.info(f"Extracted {len(file_urls)} file URLs: {file_urls}")
+            
             if not file_urls:
+                logger.error(f"No valid file URLs found. Raw content was: {content}")
                 raise HTTPException(status_code=400, detail="No valid file URLs found in request")
             
             logger.info(f"Processing {len(file_urls)} files: {[url[:50] + '...' for url in file_urls]}")

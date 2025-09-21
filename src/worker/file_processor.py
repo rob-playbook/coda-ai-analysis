@@ -29,23 +29,35 @@ class FileProcessor:
     def extract_file_urls(self, content: str) -> List[str]:
         """Extract FILE_URL entries from content string"""
         try:
+            logger.info(f"extract_file_urls called with content: {content[:100]}...")
+            
             if not content.startswith("FILE_URL:"):
+                logger.info("Content does not start with FILE_URL:")
                 return []
             
             # Split by comma and extract URLs
             parts = content.split(",")
             urls = []
             
-            for part in parts:
+            logger.info(f"Split content into {len(parts)} parts: {parts}")
+            
+            for i, part in enumerate(parts):
                 part = part.strip()
+                logger.info(f"Processing part {i+1}: {part[:50]}...")
+                
                 if part.startswith("FILE_URL:"):
                     url = part[9:]  # Remove "FILE_URL:" prefix
+                    logger.info(f"Extracted URL: {url[:50]}...")
+                    
                     if url and self._is_valid_url(url):
                         urls.append(url)
+                        logger.info(f"URL validated successfully: {url[:50]}...")
                     else:
-                        logger.warning(f"Invalid URL found: {part}")
+                        logger.warning(f"Invalid URL found: {part} (extracted: {url[:50]}...)")
+                else:
+                    logger.warning(f"Part does not start with FILE_URL: {part}")
             
-            logger.info(f"Extracted {len(urls)} file URLs from content")
+            logger.info(f"Final extracted {len(urls)} file URLs from content")
             return urls
             
         except Exception as e:
@@ -55,12 +67,23 @@ class FileProcessor:
     def _is_valid_url(self, url: str) -> bool:
         """Validate URL format and domain"""
         try:
+            logger.info(f"Validating URL: {url[:100]}...")
+            
             parsed = urlparse(url)
+            logger.info(f"Parsed URL - scheme: {parsed.scheme}, netloc: {parsed.netloc}, path: {parsed.path[:50]}...")
+            
             # Only allow Coda-hosted files for security
-            return (parsed.scheme in ['https'] and 
-                   parsed.netloc in ['codahosted.io', 'coda.imgix.net'] and
-                   len(url) > 10)
-        except Exception:
+            is_valid = (parsed.scheme in ['https'] and 
+                       parsed.netloc in ['codahosted.io', 'coda.imgix.net'] and
+                       len(url) > 10)
+            
+            logger.info(f"URL validation result: {is_valid}")
+            if not is_valid:
+                logger.warning(f"URL failed validation - scheme: {parsed.scheme}, netloc: {parsed.netloc}, length: {len(url)}")
+            
+            return is_valid
+        except Exception as e:
+            logger.error(f"URL validation error: {e}")
             return False
     
     def _get_mime_type(self, url: str, content_type: Optional[str] = None) -> str:
