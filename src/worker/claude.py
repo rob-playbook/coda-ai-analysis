@@ -322,6 +322,123 @@ Return the full reformatted analysis:
             # logger.warning(f"Format consistency check failed: {e} - returning original result")
             return combined_result  # Return original if consistency check fails
     
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=30),
+        retry=retry_if_not_exception_type((asyncio.TimeoutError, anthropic.AuthenticationError)),
+        reraise=True
+    )
+    async def process_files(self, files_data: List[Dict[str, any]], request_data: Any) -> str:
+        """
+        Process files through Claude API using document content blocks
+        """
+        try:
+            # Build content array with text prompt + document blocks
+            content = [{
+                "type": "text",
+                "text": request_data.user_prompt
+            }]
+            
+            # Add each file as a document block
+            for file_info in files_data:
+                content.append({
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": file_info['mime_type'],
+                        "data": file_info['base64_data']
+                    }
+                })
+            
+            # Build API parameters
+            api_params = {
+                "model": request_data.model,
+                "max_tokens": request_data.max_tokens,
+                "messages": [{
+                    "role": "user",
+                    "content": content
+                }]
+            }
+            
+            # Add system prompt if provided by Coda
+            if request_data.system_prompt:
+                api_params["system"] = request_data.system_prompt
+            
+            # Extended thinking support
+            if request_data.extended_thinking:
+                thinking_budget = request_data.thinking_budget or 2048
+                api_params["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": max(1024, min(thinking_budget, request_data.max_tokens - 200))
+                }
+                api_params["temperature"] = 1.0  # Required for thinking
+            else:
+                api_params["temperature"] = max(0.0, min(1.0, request_data.temperature))
+            
+            total_file_size = sum(len(f['base64_data']) for f in files_data)
+            logger.info(f"Calling Claude API with {len(files_data)} files, {total_file_size} chars base64 total")
+            logger.info(f"Files: {[f['mime_type'] for f in files_data]}")
+            
+            start_time = time.time()
+            
+            # Files require longer timeout due to processing overhead
+            async with asyncio.timeout(900):  # 15-minute timeout for file processing
+                # Use streaming for large responses
+                if request_data.max_tokens > 20000:
+                    logger.info("Using streaming for large file response")
+                    result_parts = []
+                    
+                    with self.client.messages.stream(**api_params) as stream:
+                        for text in stream.text_stream:
+                            result_parts.append(text)
+                    
+                    result = ''.join(result_parts)
+                    response = stream.get_final_message()
+                else:
+                    response = self.client.messages.create(**api_params)
+                    result = response.content[0].text
+            
+            end_time = time.time()
+            
+            # Process response content based on thinking settings
+            if request_data.max_tokens > 20000:
+                # Streaming - result already extracted
+                pass
+            elif request_data.extended_thinking and not request_data.include_thinking:
+                # Strip thinking blocks, keep only text blocks
+                text_blocks = [block.text for block in response.content if block.type == "text"]
+                result = "\n\n".join(text_blocks) if text_blocks else ""
+            else:
+                # Standard processing
+                if len(response.content) == 1:
+                    result = response.content[0].text
+                else:
+                    all_text = []
+                    for block in response.content:
+                        if hasattr(block, 'text'):
+                            all_text.append(block.text)
+                        elif hasattr(block, 'thinking'):
+                            all_text.append(block.thinking)
+                    result = "\n\n".join(all_text)
+            
+            logger.info(f"Claude API file processing completed in {end_time - start_time:.2f}s")
+            logger.info(f"Response length: {len(result)} characters")
+            
+            return result
+            
+        except anthropic.RateLimitError as e:
+            logger.warning(f"Rate limit hit during file processing, will retry: {e}")
+            raise
+        except anthropic.APIError as e:
+            logger.error(f"Claude API error during file processing: {e}")
+            raise
+        except asyncio.TimeoutError as e:
+            logger.error(f"Claude API file processing timed out after 15 minutes: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error in Claude file processing: {e}")
+            raise
+
     async def generate_analysis_name(self, analysis_result: str, request_data: Any) -> str:
         """Generate concise analysis name using Claude with timeout protection based on request context"""
         try:

@@ -205,10 +205,10 @@ pack.addFormula({
   }
 });
 
-// Queue Length - returns just the number
+// Analyses Ahead - returns just the number
 pack.addFormula({
-  name: "QueueLength",
-  description: "Get current queue length (number of pending analyses)",
+  name: "AnalysesAhead",
+  description: "Get number of analyses ahead of yours (includes all processing)",
   parameters: [],
   resultType: coda.ValueType.Number,
   execute: async function ([], context) {
@@ -219,7 +219,7 @@ pack.addFormula({
         timeoutSeconds: 10
       });
       
-      return response.body.queue_length || 0;
+      return response.body.analyses_ahead || 0;
     } catch (error) {
       return 0; // Return 0 if can't connect
     }
@@ -242,15 +242,14 @@ pack.addFormula({
       
       const data = response.body;
       const waitTime = data.estimated_wait_minutes || 0;
-      const queueLength = data.queue_length || 0;
-      const processing = data.currently_processing || 0;
+      const analysesAhead = data.analyses_ahead || 0;
       
-      if (queueLength === 0 && processing === 0) {
-        return "✅ Queue empty - analyses will run immediately";
-      } else if (queueLength === 0 && processing > 0) {
-        return `⏳ ${processing} analysis running - new requests start immediately`;
+      if (analysesAhead === 0) {
+        return "✅ No analyses ahead - yours will start immediately";
+      } else if (analysesAhead === 1) {
+        return `⏳ 1 analysis ahead of yours - estimated wait: ${waitTime} min`;
       } else {
-        return `📋 ${queueLength} queued, ${processing} processing - estimated wait: ${waitTime} min`;
+        return `📋 ${analysesAhead} analyses ahead of yours - estimated wait: ${waitTime} min`;
       }
     } catch (error) {
       return `❌ Cannot check queue status: ${error.message}`;
@@ -273,6 +272,27 @@ pack.addFormula({
       });
       
       return response.body.estimated_wait_minutes || 0;
+    } catch (error) {
+      return 0;
+    }
+  }
+});
+
+// BACKWARD COMPATIBILITY - QueueLength now returns total analyses ahead
+pack.addFormula({
+  name: "QueueLength",
+  description: "Get number of analyses ahead of yours (same as AnalysesAhead)",
+  parameters: [],
+  resultType: coda.ValueType.Number,
+  execute: async function ([], context) {
+    try {
+      const response = await context.fetcher.fetch({
+        method: "GET",
+        url: "https://coda-ai-web.onrender.com/queue/status",
+        timeoutSeconds: 10
+      });
+      
+      return response.body.analyses_ahead || 0;
     } catch (error) {
       return 0;
     }

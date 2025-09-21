@@ -14,6 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.worker.job_queue import JobQueue
 from src.worker.chunking import ContentChunker
 from src.worker.claude import ClaudeService
+from src.worker.file_processor import FileProcessor
 from src.shared.config import get_settings
 from src.shared.logging import setup_logging
 from src.shared.models import AnalysisJob, JobStatus, AnalysisResult
@@ -28,6 +29,7 @@ class AnalysisWorker:
         self.job_queue = JobQueue(self.settings.queue_url)
         self.claude_service = ClaudeService(self.settings.claude_api_key)
         self.chunker = ContentChunker()
+        self.file_processor = FileProcessor()
         self.running = True
         
         # Get webhook configuration from environment
@@ -67,26 +69,7 @@ class AnalysisWorker:
         
         # logger.info("Analysis worker stopped")
     
-    def _has_processing_errors(self, results: list) -> bool:
-        """Check if any results contain error messages"""
-        for result in results:
-            if result.startswith("[Error processing chunk"):
-                return True
-            if "Error code:" in result:
-                return True
-            if "error" in result.lower() and len(result.strip()) < 200:  # Short error messages
-                return True
-            if len(result.strip()) < 10:  # Suspiciously short
-                return True
-        return False
-    
-    def _extract_error_message(self, results: list) -> str:
-        """Extract error message from results"""
-        errors = []
-        for result in results:
-            if result.startswith("[Error processing chunk") or "Error code:" in result:
-                errors.append(result)
-        return "; ".join(errors) if errors else "Unknown processing error"
+
     
     async def process_job(self, job: AnalysisJob):
         """Process a single analysis job
@@ -101,26 +84,62 @@ class AnalysisWorker:
         try:
             request_data = job.request_data
             
-            # Step 1: Chunk content
-            chunks = self.chunker.chunk_content(
-                request_data.content,
-                request_data.user_prompt
+            # DETECT FILE vs TEXT PROCESSING
+            is_file_request = request_data.content.startswith("FILE_URL:")
+            
+            if is_file_request:
+                # FILE PROCESSING PATH
+                logger.info(f"File processing job {job.job_id}")
+                
+                # Step 1: Extract and download files
+                file_urls = self.file_processor.extract_file_urls(request_data.content)
+                if not file_urls:
+                    raise Exception("No valid file URLs found in content")
+                
+                logger.info(f"Downloading {len(file_urls)} files for job {job.job_id}")
+                files_data = await self.file_processor.download_files(file_urls)
+                
+                # Step 2: Process files through Claude API  
+                combined_result = await self.claude_service.process_files(files_data, request_data)
+                chunk_count = len(file_urls)  # Use file count as "chunk count" for stats
+                
+            else:
+                # TEXT PROCESSING PATH
+                logger.info(f"Text processing job {job.job_id}")
+                
+                # Step 1: Chunk content
+                chunks = self.chunker.chunk_content(
+                    request_data.content,
+                    request_data.user_prompt
+                )
+                
+                chunk_count = len(chunks)
+                logger.info(f"Content split into {chunk_count} chunks for job {job.job_id}")
+                
+                # Step 2: Process chunks through Claude API
+                results = await self.claude_service.process_chunks_sequential(
+                    chunks, request_data
+                )
+                
+                # Step 3: Combine results
+                combined_result = self._combine_chunk_results(results)
+                
+                # Step 3.5: Ensure format consistency for multi-chunk results
+                if chunk_count > 1:
+                    combined_result = await self.claude_service.ensure_format_consistency(combined_result, request_data)
+            
+            # Step 3: Check for basic processing errors (applies to both text and file processing)
+            has_errors = (
+                "[Error processing" in combined_result or
+                "Error code:" in combined_result or
+                len(combined_result.strip()) < 10
             )
             
-            chunk_count = len(chunks)
-            logger.info(f"Content split into {chunk_count} chunks for job {job.job_id}")
-            
-            # Step 2: Process chunks through Claude API
-            results = await self.claude_service.process_chunks_sequential(
-                chunks, request_data
-            )
-            
-            # Step 3: Check for processing errors BEFORE quality assessment
-            if self._has_processing_errors(results):
+            if has_errors:
                 # Immediate failure for processing errors - don't waste API calls on quality assessment
                 quality_status = "FAILED"
                 analysis_name = "Processing Error"
-                error_message = self._extract_error_message(results)
+                error_message = combined_result[:500] if combined_result else "Unknown processing error"
                 
                 logger.error(f"Job {job.job_id} failed due to processing errors: {error_message}")
                 
@@ -135,22 +154,11 @@ class AnalysisWorker:
                         "job_id": job.job_id,
                         "chunk_count": chunk_count,
                         "processing_time_seconds": round(processing_time, 2),
-                        "failure_reason": "processing_error"
+                        "failure_reason": "processing_error",
+                        "processing_type": "file" if is_file_request else "text"
                     }
                 )
             else:
-                # Step 3: Combine results
-                combined_result = self._combine_chunk_results(results)
-                
-                # Step 3.5: Ensure format consistency for multi-chunk results
-                if chunk_count > 1:
-                    # logger.info(f"Ensuring format consistency for {chunk_count} chunks")
-                    before_length = len(combined_result)
-                    # logger.info(f"Before consistency check: {before_length} characters")
-                    combined_result = await self.claude_service.ensure_format_consistency(combined_result, request_data)
-                    after_length = len(combined_result)
-                    # logger.info(f"Consistency check: {before_length} → {after_length} chars (diff: {after_length - before_length})") 
-                
                 # Step 4: Quality assessment (only for successful processing)
                 quality_status = await self.claude_service.assess_quality(combined_result, request_data)
                 
@@ -170,7 +178,8 @@ class AnalysisWorker:
                         "chunk_count": chunk_count,
                         "total_characters": len(combined_result),
                         "processing_time_seconds": round(processing_time, 2),
-                        "quality_status": quality_status
+                        "quality_status": quality_status,
+                        "processing_type": "file" if is_file_request else "text"
                     }
                 )
             

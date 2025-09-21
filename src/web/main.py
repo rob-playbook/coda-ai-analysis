@@ -12,6 +12,7 @@ from src.shared.logging import setup_logging
 from src.worker.job_queue import JobQueue
 from src.worker.chunking import ContentChunker
 from src.worker.claude import ClaudeService
+from src.worker.file_processor import FileProcessor
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ app.add_middleware(
 job_queue = JobQueue(settings.queue_url)
 claude_service = ClaudeService(settings.claude_api_key)
 chunker = ContentChunker()
+file_processor = FileProcessor()
 
 @app.get("/health")
 async def health_check():
@@ -76,9 +78,43 @@ async def start_analysis(request: PollingRequest):
                 detail=f"Content exceeds maximum size of {settings.max_content_size} characters"
             )
         
+        # DETECT FILE PROCESSING vs TEXT PROCESSING
+        is_file_request = content.startswith("FILE_URL:")
+        
         # Generate job ID
         job_id = str(uuid.uuid4())
         
+        # FILE PROCESSING PATH
+        if is_file_request:
+            logger.info(f"File processing detected for job {job_id}")
+            
+            # Extract file URLs
+            file_urls = file_processor.extract_file_urls(content)
+            if not file_urls:
+                raise HTTPException(status_code=400, detail="No valid file URLs found in request")
+            
+            logger.info(f"Processing {len(file_urls)} files: {[url[:50] + '...' for url in file_urls]}")
+            
+            # Files always go to async processing due to download overhead
+            job = AnalysisJob(
+                job_id=job_id,
+                record_id=request.record_id,
+                status=JobStatus.PENDING,
+                request_data=request.to_analysis_request(),
+                created_at=time.time()
+            )
+            
+            job_queue.enqueue_job(job)
+            
+            return {
+                "job_id": job_id,
+                "status": "processing",
+                "message": f"File analysis queued for background processing ({len(file_urls)} files)",
+                "estimated_time": "3-15 minutes for file processing",
+                "file_count": len(file_urls)
+            }
+        
+        # TEXT PROCESSING PATH
         # Try synchronous processing first (40 second timeout)
         try:
             async with asyncio.timeout(40):
@@ -87,11 +123,18 @@ async def start_analysis(request: PollingRequest):
                     chunks = chunker.chunk_content(content, request.user_prompt)
                     if len(chunks) == 1:  # Single chunk - try sync
                         try:
+                            # TRACK SYNC PROCESSING
+                            job_queue.redis.incr("sync_processing")
+                            job_queue.redis.expire("sync_processing", 300)  # 5 min expiry
+                            
                             result = await claude_service.process_chunk(chunks[0], request)
                             
                             # ADD QUALITY ASSESSMENT TO SYNC PATH TOO (consistency with async path)
                             quality_status = await claude_service.assess_quality(result, request)
                             analysis_name = await claude_service.generate_analysis_name(result, request)
+                            
+                            # UNTRACK SYNC PROCESSING
+                            job_queue.redis.decr("sync_processing")
                             
                             # Handle failed quality assessment by returning actual Claude response as error
                             if quality_status == "FAILED":
@@ -143,13 +186,19 @@ async def start_analysis(request: PollingRequest):
                                 "processing_time_seconds": "immediate"
                             }
                         except Exception as sync_error:
+                            # UNTRACK SYNC PROCESSING ON ERROR
+                            job_queue.redis.decr("sync_processing")
                             logger.warning(f"Sync processing failed, falling back to async: {sync_error}")
                             # Fall through to async processing
                             pass
         except asyncio.TimeoutError:
+            # UNTRACK SYNC PROCESSING ON TIMEOUT
+            job_queue.redis.decr("sync_processing")
             logger.info("Sync processing timed out, falling back to async")
             pass  # Fall through to async processing
         except Exception as e:
+            # UNTRACK SYNC PROCESSING ON ERROR
+            job_queue.redis.decr("sync_processing")
             logger.warning(f"Sync processing error, falling back to async: {e}")
             pass  # Fall through to async processing
         
@@ -302,45 +351,51 @@ async def get_job_status(job_id: str):
 
 @app.get("/queue/status")
 async def get_queue_status():
-    """Get current queue status with lightweight calculation"""
+    """Get current queue status - shows ALL analyses ahead of you"""
     try:
-        # Count pending jobs (fast)
-        pending_count = job_queue.redis.llen(job_queue.job_queue_key)
+        # Count async jobs waiting in queue
+        async_queue_count = job_queue.redis.llen(job_queue.job_queue_key)
         
-        # Count processing jobs (fast)
-        processing_count = job_queue.redis.scard(job_queue.processing_key)
+        # Count async jobs currently processing 
+        async_processing_count = job_queue.redis.scard(job_queue.processing_key)
         
-        # LIGHTWEIGHT WAIT TIME CALCULATION (no expensive scans)
+        # Count sync jobs currently processing
+        sync_processing_count = int(job_queue.redis.get("sync_processing") or 0)
+        
+        # TOTAL ANALYSES AHEAD OF YOU
+        total_ahead = async_queue_count + async_processing_count + sync_processing_count
+        
+        # Estimate wait time based on total load
         estimated_wait = 0
-        if pending_count > 0:
-            # Simple tiered estimates - no Redis scanning
-            if pending_count <= 2:
-                estimated_wait = pending_count * 1.5  # Small jobs: 1.5 min each
-            elif pending_count <= 5:
-                estimated_wait = pending_count * 2.5  # Medium load: 2.5 min each
-            elif pending_count <= 10:
-                estimated_wait = pending_count * 3.5  # Higher load: 3.5 min each
+        if total_ahead > 0:
+            # Simple tiered estimates based on total system load
+            if total_ahead <= 2:
+                estimated_wait = total_ahead * 1.5  # Light load: 1.5 min each
+            elif total_ahead <= 5:
+                estimated_wait = total_ahead * 2.5  # Medium load: 2.5 min each
+            elif total_ahead <= 10:
+                estimated_wait = total_ahead * 3.5  # Higher load: 3.5 min each
             else:
-                estimated_wait = pending_count * 5    # High load: 5 min each
-        
-        # Add small buffer if jobs are currently running
-        if processing_count > 0 and pending_count > 0:
-            estimated_wait += 0.5  # Add 30 second buffer
+                estimated_wait = total_ahead * 5    # High load: 5 min each
         
         return {
-            "queue_length": pending_count,
-            "currently_processing": processing_count,
+            "analyses_ahead": total_ahead,  # This is what users care about!
             "estimated_wait_minutes": max(0, round(estimated_wait, 1)),
-            "status": "operational" if pending_count < 10 else "busy"
+            "status": "operational" if total_ahead < 10 else "busy",
+            # Detailed breakdown (for debugging)
+            "breakdown": {
+                "sync_processing": sync_processing_count,
+                "async_processing": async_processing_count, 
+                "async_queued": async_queue_count
+            }
         }
     except Exception as e:
         logger.error(f"Queue status check failed: {e}")
         return {
+            "analyses_ahead": 0,
+            "estimated_wait_minutes": 0,
             "status": "unknown", 
-            "error": str(e),
-            "queue_length": 0,
-            "currently_processing": 0,
-            "estimated_wait_minutes": 0
+            "error": str(e)
         }
 
 @app.get("/queue/user/{record_id_prefix}")
