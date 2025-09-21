@@ -31,12 +31,22 @@ class FileProcessor:
         try:
             logger.info(f"extract_file_urls called with content: {content[:100]}...")
             
-            if not content.startswith("FILE_URL:"):
-                logger.info("Content does not start with FILE_URL:")
+            # Handle both direct FILE_URL and wrapped content
+            if not (content.startswith("FILE_URL:") or "FILE_URL:" in content):
+                logger.info("Content does not contain FILE_URL:")
                 return []
             
-            # Split by comma and extract URLs
-            parts = content.split(",")
+            # Split by comma and extract URLs - handle wrapped content
+            if content.startswith("FILE_URL:"):
+                # Direct FILE_URL content
+                parts = content.split(",")
+            else:
+                # Wrapped content - find all FILE_URL entries
+                import re
+                file_url_pattern = r'FILE_URL:[^\s,]+'
+                matches = re.findall(file_url_pattern, content)
+                parts = matches
+            
             urls = []
             
             logger.info(f"Split content into {len(parts)} parts: {parts}")

@@ -88,7 +88,8 @@ async def start_analysis(request: PollingRequest):
             )
         
         # DETECT FILE PROCESSING vs TEXT PROCESSING
-        is_file_request = content.startswith("FILE_URL:")
+        # Account for SOURCE CONTENT wrapper from reconstruct_content()
+        is_file_request = content.startswith("FILE_URL:") or "FILE_URL:" in content[:500]
         
         # Generate job ID
         job_id = str(uuid.uuid4())
@@ -104,7 +105,13 @@ async def start_analysis(request: PollingRequest):
             
             if not file_urls:
                 logger.error(f"No valid file URLs found. Raw content was: {content}")
-                raise HTTPException(status_code=400, detail="No valid file URLs found in request")
+                # Return proper JSON response instead of HTTP exception
+                return {
+                    "job_id": job_id,
+                    "status": "failed",
+                    "error_message": "No valid file URLs found in request",
+                    "message": "File processing failed: Invalid or missing file URLs"
+                }
             
             logger.info(f"Processing {len(file_urls)} files: {[url[:50] + '...' for url in file_urls]}")
             
