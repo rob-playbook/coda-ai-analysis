@@ -6,6 +6,7 @@ import logging
 from typing import List, Dict, Tuple, Optional
 from urllib.parse import urlparse
 import mimetypes
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -190,3 +191,44 @@ class FileProcessor:
         except Exception as e:
             logger.error(f"Error downloading files: {e}")
             raise
+    
+    def extract_text_content(self, file_data: bytes, mime_type: str, filename: str = "") -> str:
+        """Extract text content from various file types"""
+        try:
+            logger.info(f"Extracting text content from {mime_type} file: {filename[:50]}...")
+            
+            if mime_type == 'text/plain':
+                return file_data.decode('utf-8')
+            
+            elif mime_type == 'text/markdown':
+                return file_data.decode('utf-8')
+            
+            elif mime_type == 'text/csv':
+                return file_data.decode('utf-8')
+            
+            elif mime_type == 'application/json':
+                return file_data.decode('utf-8')
+                
+            elif mime_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+                try:
+                    from docx import Document
+                    doc = Document(BytesIO(file_data))
+                    paragraphs = [paragraph.text for paragraph in doc.paragraphs if paragraph.text.strip()]
+                    return '\n\n'.join(paragraphs)
+                except ImportError:
+                    logger.error("python-docx not installed - cannot extract DOCX content")
+                    raise Exception("DOCX processing requires python-docx library")
+                except Exception as e:
+                    logger.error(f"Error extracting DOCX content: {e}")
+                    raise Exception(f"Failed to extract DOCX content: {str(e)}")
+            
+            else:
+                logger.error(f"Unsupported file type for text extraction: {mime_type}")
+                raise Exception(f"Text extraction not supported for {mime_type}. Supported types: PDF (as document block), plain text, markdown, CSV, JSON, DOCX")
+                
+        except UnicodeDecodeError as e:
+            logger.error(f"Unicode decode error for {mime_type}: {e}")
+            raise Exception(f"File encoding not supported - please ensure file is UTF-8 encoded")
+        except Exception as e:
+            logger.error(f"Text extraction failed for {mime_type}: {e}")
+            raise Exception(f"Text extraction failed: {str(e)}")

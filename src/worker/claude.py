@@ -330,25 +330,25 @@ Return the full reformatted analysis:
     )
     async def process_files(self, files_data: List[Dict[str, any]], request_data: Any) -> str:
         """
-        Process files through Claude API using document content blocks
+        Process files through Claude API - PDFs as document blocks, others as extracted text
         """
         try:
-            # For file processing, use ONLY the user_prompt (not the FILE_URL content)
-            # The files themselves are sent as document blocks
+            from src.worker.file_processor import FileProcessor
+            file_processor = FileProcessor()
+            
+            # Clean the user prompt
             clean_prompt = request_data.user_prompt
             
             # Remove any FILE_URL references that might have leaked into the prompt
             if "FILE_URL:" in clean_prompt:
-                # Split by common separators and filter out FILE_URL lines
                 lines = clean_prompt.split('\n')
                 clean_lines = [line for line in lines if not line.strip().startswith('FILE_URL:')]
                 clean_prompt = '\n'.join(clean_lines).strip()
                 
-                # If the entire prompt was FILE_URL content, use a default instruction
                 if not clean_prompt:
                     clean_prompt = "Please analyze the provided documents and summarize their key content."
             
-            # Remove content placeholders since files are provided as document blocks
+            # Remove content placeholders
             content_placeholders = [
                 "{{CONTENT}}", "{{CHUNK_CONTENT}}", "{{ANALYSIS_CONTENT}}", "{{DATA}}",
                 "SOURCE CONTENT:", "TARGET CONTENT:", "**SOURCE CONTENT:**", "**TARGET CONTENT:**"
@@ -357,11 +357,9 @@ Return the full reformatted analysis:
             for placeholder in content_placeholders:
                 clean_prompt = clean_prompt.replace(placeholder, "").strip()
             
-            # Remove URL references since files are sent as document blocks
+            # Remove URL references
             import re
-            # Remove https URLs completely
             clean_prompt = re.sub(r'https://[^\s]+', '', clean_prompt)
-            # Remove references to accessing URLs
             url_phrases = [
                 "access the content at", "view the content at", "analyze the content at",
                 "summarize the content at", "review the content at", "examine the content at",
@@ -371,42 +369,93 @@ Return the full reformatted analysis:
             for phrase in url_phrases:
                 clean_prompt = re.sub(phrase, '', clean_prompt, flags=re.IGNORECASE)
             
-            # Clean up any leftover formatting and extra whitespace
             clean_prompt = re.sub(r'\s+', ' ', clean_prompt).strip()
             
-            # If prompt is now empty or too short, use a default
             if len(clean_prompt.strip()) < 10:
                 clean_prompt = "Please analyze the provided documents and summarize their key content."
             
             logger.info(f"Clean prompt for file processing: {clean_prompt[:200]}...")
             
-            # CRITICAL: Log what we're actually sending to Claude
-            logger.info(f"Building content array with {len(files_data)} files")
+            # **NEW LOGIC: Separate files by type**
+            pdf_files = [f for f in files_data if f['mime_type'] == 'application/pdf']
+            text_files = [f for f in files_data if f['mime_type'] != 'application/pdf' and 'image' not in f['mime_type']]
+            image_files = [f for f in files_data if 'image' in f['mime_type']]
             
-            # Build content array with clean text prompt + document blocks
+            logger.info(f"File breakdown: {len(pdf_files)} PDFs, {len(text_files)} text files, {len(image_files)} images")
+            
+            # Start building content array
             content = [{
                 "type": "text",
                 "text": clean_prompt
             }]
             
-            # Add each file as a document block
-            for i, file_info in enumerate(files_data):
-                if 'base64_data' not in file_info:
-                    raise Exception(f"File {i+1} missing base64_data - download may have failed")
+            # Add PDFs as document blocks (supported)
+            for i, pdf_file in enumerate(pdf_files):
+                if 'base64_data' not in pdf_file:
+                    raise Exception(f"PDF file {i+1} missing base64_data - download may have failed")
                 
                 doc_block = {
                     "type": "document",
                     "source": {
                         "type": "base64",
-                        "media_type": file_info['mime_type'],
-                        "data": file_info['base64_data']
+                        "media_type": "application/pdf",
+                        "data": pdf_file['base64_data']
                     }
                 }
                 content.append(doc_block)
-                logger.info(f"Added document block {i+1}: {file_info['mime_type']}, {len(file_info['base64_data'])} chars base64")
+                logger.info(f"Added PDF document block {i+1}: {len(pdf_file['base64_data'])} chars base64")
             
-            # CRITICAL: Log the final content structure
-            logger.info(f"Final content array: {len(content)} blocks (1 text + {len(files_data)} documents)")
+            # Extract text from other files and add as regular text content
+            if text_files:
+                extracted_texts = []
+                for i, text_file in enumerate(text_files):
+                    try:
+                        # Extract text content from file data
+                        text_content = file_processor.extract_text_content(
+                            text_file['data'], 
+                            text_file['mime_type'], 
+                            text_file['url']
+                        )
+                        
+                        # Format the extracted content
+                        file_header = f"=== File: {text_file['url'].split('/')[-1]} ({text_file['mime_type']}) ==="
+                        extracted_texts.append(f"{file_header}\n{text_content}")
+                        
+                        logger.info(f"Extracted {len(text_content)} characters from {text_file['mime_type']} file")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to extract text from file {i+1}: {e}")
+                        # Add error message instead of failing completely
+                        error_msg = f"=== File: {text_file['url'].split('/')[-1]} ===\n[Error: Could not extract text content - {str(e)}]"
+                        extracted_texts.append(error_msg)
+                
+                # Add all extracted text as a single text block
+                if extracted_texts:
+                    combined_text = "\n\n".join(extracted_texts)
+                    content.append({
+                        "type": "text",
+                        "text": f"\n\nDocument Contents:\n{combined_text}"
+                    })
+                    logger.info(f"Added extracted text content: {len(combined_text)} characters")
+            
+            # Add images as image blocks (if any)
+            for i, image_file in enumerate(image_files):
+                if 'base64_data' not in image_file:
+                    logger.warning(f"Image file {i+1} missing base64_data - skipping")
+                    continue
+                
+                image_block = {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": image_file['mime_type'],
+                        "data": image_file['base64_data']
+                    }
+                }
+                content.append(image_block)
+                logger.info(f"Added image block {i+1}: {image_file['mime_type']}, {len(image_file['base64_data'])} chars base64")
+            
+            logger.info(f"Final content array: {len(content)} blocks")
             
             # Build API parameters
             api_params = {
@@ -433,9 +482,7 @@ Return the full reformatted analysis:
             else:
                 api_params["temperature"] = max(0.0, min(1.0, request_data.temperature))
             
-            total_file_size = sum(len(f['base64_data']) for f in files_data)
-            logger.info(f"Calling Claude API with {len(files_data)} files, {total_file_size} chars base64 total")
-            logger.info(f"Files: {[f['mime_type'] for f in files_data]}")
+            logger.info(f"Calling Claude API with mixed content: {len(pdf_files)} PDFs, {len(text_files)} text extracts, {len(image_files)} images")
             
             start_time = time.time()
             
