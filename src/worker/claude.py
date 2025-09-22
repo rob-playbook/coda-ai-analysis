@@ -228,7 +228,7 @@ class ClaudeService:
         try:
             # Add timeout protection - quality assessment should not break main analysis
             async with asyncio.timeout(15):  # 15-second timeout for quality assessment
-                # logger.info("Starting quality assessment using model: claude-3-haiku-20240307")
+                # logger.info("Starting quality assessment using model: claude-sonnet-4-20250514")
                 assessment_prompt = f"""IMPORTANT: Start your response with either SUCCESS or FAILED as the very first word.
 
 You are evaluating whether an AI completed the requested task.
@@ -260,8 +260,8 @@ You must respond with either SUCCESS or FAILED only.
 Be strict: If the AI identifies that content doesn't match what was requested, that's FAILED regardless of any attempted workarounds."""
 
                 response = self.client.messages.create(
-                    model="claude-3-haiku-20240307",
-                    max_tokens=50,  # Increase to see Haiku's reasoning
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=50,  # Allow enough tokens for reasoning
                     temperature=0.0,
                     system="You are an intelligent quality evaluator for automated workflows. Assess whether the AI response successfully fulfills the original request using semantic understanding, not pattern matching. Consider content alignment, completeness, and whether the deliverables match what was specifically asked for.",
                     messages=[{"role": "user", "content": assessment_prompt}]
@@ -272,7 +272,7 @@ Be strict: If the AI identifies that content doesn't match what was requested, t
                 # Extract just the first word (SUCCESS or FAILED) from response
                 first_word = result.split()[0] if result.split() else result
                 
-                # DEBUG: Log Haiku's full reasoning
+                # DEBUG: Log Claude's full reasoning
                 # logger.info(f"Quality assessment reasoning: {response.content[0].text}")
                 # logger.info(f"Quality assessment input (first 500 chars): {analysis_result[:500]}")
                 # logger.info(f"Quality assessment result: {first_word}")
@@ -331,10 +331,15 @@ Return the full reformatted analysis:
     async def process_files(self, files_data: List[Dict[str, any]], request_data: Any) -> str:
         """
         Process files through Claude API - PDFs as document blocks, others as extracted text
+        FIXED: Now handles mixed content (files + regular text)
         """
         try:
             from src.worker.file_processor import FileProcessor
             file_processor = FileProcessor()
+            
+            # EXTRACT NON-FILE TEXT CONTENT from original content
+            preserved_text = self._extract_non_file_content(request_data.content)
+            logger.info(f"Extracted preserved text content: {len(preserved_text)} characters")
             
             # Clean the user prompt
             clean_prompt = request_data.user_prompt
@@ -348,10 +353,10 @@ Return the full reformatted analysis:
                 if not clean_prompt:
                     clean_prompt = "Please analyze the provided documents and summarize their key content."
             
-            # Remove content placeholders
+            # Remove content placeholders (but keep actual content structure labels)
             content_placeholders = [
-                "{{CONTENT}}", "{{CHUNK_CONTENT}}", "{{ANALYSIS_CONTENT}}", "{{DATA}}",
-                "SOURCE CONTENT:", "TARGET CONTENT:", "**SOURCE CONTENT:**", "**TARGET CONTENT:**"
+                "{{CONTENT}}", "{{CHUNK_CONTENT}}", "{{ANALYSIS_CONTENT}}", "{{DATA}}"
+                # NOTE: Do NOT remove **SOURCE CONTENT:** and **TARGET CONTENT:** - these are actual content structure!
             ]
             
             for placeholder in content_placeholders:
@@ -437,6 +442,14 @@ Return the full reformatted analysis:
                         "text": f"\n\nDocument Contents:\n{combined_text}"
                     })
                     logger.info(f"Added extracted text content: {len(combined_text)} characters")
+            
+            # ADD PRESERVED NON-FILE TEXT CONTENT (the missing piece!)
+            if preserved_text.strip():
+                content.append({
+                    "type": "text",
+                    "text": f"\n\nAdditional Content:\n{preserved_text}"
+                })
+                logger.info(f"Added preserved text content: {len(preserved_text)} characters")
             
             # Add images as image blocks (if any)
             for i, image_file in enumerate(image_files):
@@ -553,7 +566,7 @@ Return the full reformatted analysis:
                 len(analysis_result.strip()) < 50):
                 return "Processing Error"
             
-            # logger.info("Starting name generation using model: claude-3-haiku-20240307")
+            # logger.info("Starting name generation using model: claude-sonnet-4-20250514")
             
             # Extract only the task context from user prompt (ignore system prompt)
             task_context = request_data.user_prompt[:300] if request_data.user_prompt else ""
@@ -570,7 +583,7 @@ Ignore WHO is doing it, focus only on WHAT is being done."""
             # Add timeout protection
             async with asyncio.timeout(30):  # 30-second timeout for name generation
                 response = self.client.messages.create(
-                    model="claude-3-haiku-20240307",
+                    model="claude-sonnet-4-20250514",
                     max_tokens=50,  # Increased from 30 to avoid truncation
                     temperature=0.1,
                     messages=[{"role": "user", "content": name_prompt}]
@@ -596,6 +609,30 @@ Ignore WHO is doing it, focus only on WHAT is being done."""
         except asyncio.TimeoutError:
             # logger.warning("Name generation timed out - using default name")
             return "AI Analysis Result"
+    
+    def _extract_non_file_content(self, original_content: str) -> str:
+        """
+        Extract non-FILE_URL text content from mixed content
+        This preserves regular text while removing FILE_URL entries
+        """
+        try:
+            # Split content by lines to process line by line
+            lines = original_content.split('\n')
+            preserved_lines = []
+            
+            for line in lines:
+                line_stripped = line.strip()
+                # Keep lines that don't contain FILE_URL references
+                if not line_stripped.startswith('FILE_URL:') and 'FILE_URL:' not in line_stripped:
+                    preserved_lines.append(line)
+                else:
+                    logger.info(f"Filtering out FILE_URL line: {line_stripped[:100]}...")
+            
+            preserved_content = '\n'.join(preserved_lines).strip()
+            logger.info(f"Preserved {len(preserved_content)} characters of non-file content")
+            
+            return preserved_content
+            
         except Exception as e:
-            # logger.warning(f"Name generation failed: {e} - using default name")
-            return "AI Analysis Result"
+            logger.error(f"Error extracting non-file content: {e}")
+            return ""  # Return empty string on error, don't fail the whole request

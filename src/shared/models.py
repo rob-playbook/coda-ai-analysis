@@ -18,7 +18,7 @@ class AnalysisRequest(BaseModel):
     user_prompt: str = Field(..., description="Complete user prompt built by Coda")
     
     # API CONFIGURATION
-    model: str = Field(default="claude-3-5-sonnet-20241022", description="Claude model to use")
+    model: str = Field(default="claude-sonnet-4-20250514", description="Claude model to use")
     max_tokens: int = Field(default=2000, description="Maximum tokens")
     temperature: float = Field(default=0.2, description="Temperature setting")
     
@@ -55,7 +55,7 @@ class PollingRequest(BaseModel):
     user_prompt: str = Field(..., description="Complete user prompt built by Coda")
     
     # API CONFIGURATION
-    model: str = Field(default="claude-3-5-sonnet-20241022", description="Claude model to use")
+    model: str = Field(default="claude-sonnet-4-20250514", description="Claude model to use")
     max_tokens: int = Field(default=2000, description="Maximum tokens")
     temperature: float = Field(default=0.2, description="Temperature setting")
     
