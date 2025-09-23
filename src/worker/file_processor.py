@@ -19,6 +19,7 @@ class FileProcessor:
             '.txt': 'text/plain',
             '.md': 'text/markdown',
             '.csv': 'text/csv',
+            '.vtt': 'text/vtt',
             '.json': 'application/json',
             '.jpeg': 'image/jpeg',
             '.jpg': 'image/jpeg',
@@ -206,6 +207,9 @@ class FileProcessor:
             elif mime_type == 'text/csv':
                 return file_data.decode('utf-8')
             
+            elif mime_type == 'text/vtt':
+                return file_data.decode('utf-8')
+            
             elif mime_type == 'application/json':
                 return file_data.decode('utf-8')
                 
@@ -224,7 +228,7 @@ class FileProcessor:
             
             else:
                 logger.error(f"Unsupported file type for text extraction: {mime_type}")
-                raise Exception(f"Text extraction not supported for {mime_type}. Supported types: PDF (as document block), plain text, markdown, CSV, JSON, DOCX")
+                raise Exception(f"Text extraction not supported for {mime_type}. Supported types: PDF (as document block), plain text, markdown, CSV, VTT, JSON, DOCX")
                 
         except UnicodeDecodeError as e:
             logger.error(f"Unicode decode error for {mime_type}: {e}")
