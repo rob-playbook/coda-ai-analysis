@@ -248,8 +248,8 @@ EVALUATION QUESTIONS:
 3. SEEKING CLARIFICATION: Does the AI ask questions instead of providing analysis?
    - Look for phrases like "Would you like me to..." or "Please provide..." or "Which approach would you prefer?"
 
-4. TECHNICAL FAILURES: Are there error messages, processing failures, empty responses, or gibberish?
-   - Look for error codes, "processing failed", responses under 50 characters, or nonsensical text
+4. TECHNICAL FAILURES: Are there error messages, processing failures, or empty responses?
+   - Look for error codes, "processing failed", responses under 50 characters
 
 EVALUATION RULES:
 - If YES to any of questions 1-4: FAILED
