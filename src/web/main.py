@@ -62,17 +62,8 @@ async def start_analysis(request: PollingRequest):
     NEW: Start analysis - try synchronous first, fallback to async
     """
     try:
-        # BASIC DEBUGGING - Log that request arrived
-        logger.info(f"=== REQUEST RECEIVED ===")
-        logger.info(f"Record ID: {request.record_id}")
-        logger.info(f"Source1: {request.source1[:100] if request.source1 else 'None'}...")
-        logger.info(f"Source2: {request.source2[:100] if request.source2 else 'None'}...")
-        logger.info(f"User prompt: {request.user_prompt[:100] if request.user_prompt else 'None'}...")
-        
         # Reconstruct content from split pieces
         content = request.reconstruct_content()
-        logger.info(f"Reconstructed content length: {len(content)}")
-        logger.info(f"Reconstructed content starts with: {content[:100]}...")
         
         # Validate request
         if not content or len(content.strip()) == 0:
@@ -97,11 +88,9 @@ async def start_analysis(request: PollingRequest):
         # FILE PROCESSING PATH
         if is_file_request:
             logger.info(f"File processing detected for job {job_id}")
-            logger.info(f"Raw file content: {content[:200]}...")  # Debug the raw content
             
             # Extract file URLs
             file_urls = file_processor.extract_file_urls(content)
-            logger.info(f"Extracted {len(file_urls)} file URLs: {file_urls}")
             
             if not file_urls:
                 logger.error(f"No valid file URLs found. Raw content was: {content}")
@@ -112,8 +101,6 @@ async def start_analysis(request: PollingRequest):
                     "error_message": "No valid file URLs found in request",
                     "message": "File processing failed: Invalid or missing file URLs"
                 }
-            
-            logger.info(f"Processing {len(file_urls)} files: {[url[:50] + '...' for url in file_urls]}")
             
             # Files always go to async processing due to download overhead
             job = AnalysisJob(

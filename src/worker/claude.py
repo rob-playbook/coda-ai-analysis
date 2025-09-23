@@ -273,9 +273,9 @@ Be strict: If the AI identifies that content doesn't match what was requested, t
                 first_word = result.split()[0] if result.split() else result
                 
                 # DEBUG: Log Claude's full reasoning
-                # logger.info(f"Quality assessment reasoning: {response.content[0].text}")
-                # logger.info(f"Quality assessment input (first 500 chars): {analysis_result[:500]}")
-                # logger.info(f"Quality assessment result: {first_word}")
+                logger.info(f"Quality assessment reasoning: {response.content[0].text}")
+                logger.info(f"Quality assessment input (first 500 chars): {analysis_result[:500]}")
+                logger.info(f"Quality assessment result: {first_word}")
                 
                 if first_word not in ["SUCCESS", "FAILED"]:
                     # logger.warning(f"Unexpected quality assessment result: {first_word}")
