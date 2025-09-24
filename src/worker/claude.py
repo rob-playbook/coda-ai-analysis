@@ -60,6 +60,11 @@ class ClaudeService:
                 api_params["temperature"] = max(0.0, min(1.0, request_data.temperature))
             
             logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
+            logger.info(f"CONTEXT DEBUG - Content being sent to Claude contains ANALYSIS CONTEXT: {'**ANALYSIS CONTEXT:**' in chunk_content}")
+            if '**ANALYSIS CONTEXT:**' in chunk_content:
+                context_start = chunk_content.find('**ANALYSIS CONTEXT:**')
+                context_preview = chunk_content[context_start:context_start+300] if context_start != -1 else 'Not found'
+                logger.info(f"CONTEXT DEBUG - ANALYSIS CONTEXT preview: '{context_preview}...'")
             logger.info(f"API parameters: max_tokens={api_params['max_tokens']}, temperature={api_params.get('temperature', 'default')}")
             logger.info(f"User prompt length: {len(request_data.user_prompt)} characters")
             logger.info(f"System prompt length: {len(request_data.system_prompt) if request_data.system_prompt else 0} characters")

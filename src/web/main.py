@@ -62,6 +62,14 @@ async def start_analysis(request: PollingRequest):
     NEW: Start analysis - try synchronous first, fallback to async
     """
     try:
+        # DEBUG LOGGING for incoming context parameters
+        context_params = [request.context1, request.context2, request.context3, request.context4, request.context5, request.context6]
+        context_lengths = [len(param or '') for param in context_params]
+        logger.info(f"CONTEXT DEBUG - Received context parameters: {context_lengths} (char lengths)")
+        for i, param in enumerate(context_params, 1):
+            if param:
+                logger.info(f"CONTEXT DEBUG - context{i}: '{param[:100]}...'") 
+        
         # Reconstruct content from split pieces
         content = request.reconstruct_content()
         

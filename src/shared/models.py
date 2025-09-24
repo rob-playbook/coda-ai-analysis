@@ -89,6 +89,14 @@ class PollingRequest(BaseModel):
         context_parts = [part or '' for part in [self.context1, self.context2, self.context3, self.context4, self.context5, self.context6]]
         full_context = ''.join(context_parts)
         
+        # DEBUG LOGGING for context
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"CONTEXT DEBUG - Context parts: context1={len(self.context1 or '')} chars, context2={len(self.context2 or '')} chars, context3={len(self.context3 or '')} chars")
+        logger.info(f"CONTEXT DEBUG - Full context: {len(full_context)} chars")
+        if full_context:
+            logger.info(f"CONTEXT DEBUG - Context preview: '{full_context[:200]}...'")        
+        
         # Build final content structure
         content_sections = []
         
@@ -99,6 +107,9 @@ class PollingRequest(BaseModel):
         
         if full_context:
             content_sections.append(f"**ANALYSIS CONTEXT:**\n{full_context}")
+            logger.info(f"CONTEXT DEBUG - Added ANALYSIS CONTEXT section to final content")
+        else:
+            logger.info(f"CONTEXT DEBUG - No context content, ANALYSIS CONTEXT section not added")
         
         return '\n\n'.join(content_sections)
     
