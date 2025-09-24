@@ -120,7 +120,7 @@ async def start_analysis(request: PollingRequest):
                     "message": "File processing failed: Invalid or missing file URLs"
                 }
             
-            # Files always go to async processing due to download overhead
+            # Files ALWAYS go to async processing - no sync attempt
             job = AnalysisJob(
                 job_id=job_id,
                 record_id=request.record_id,
