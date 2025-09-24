@@ -90,7 +90,7 @@ async def start_analysis(request: PollingRequest):
         # Check entire content for FILE_URL, not just first 500 chars
         is_file_request = content.startswith("FILE_URL:") or "FILE_URL:" in content
         
-        logger.info(f"CONTEXT DEBUG - File detection: is_file_request={is_file_request}, content contains FILE_URL: {'FILE_URL:' in content}")
+        logger.info(f"CONTEXT DEBUG - File detection: is_file_request={is_file_request}, content contains FILE_URL: {'FILE_URL:' in content}, content length: {len(content)}")
         if 'FILE_URL:' in content:
             file_url_positions = [i for i, char in enumerate(content) if content[i:].startswith('FILE_URL:')]
             logger.info(f"CONTEXT DEBUG - FILE_URL positions in content: {file_url_positions[:3]}...")  # Show first 3 positions
