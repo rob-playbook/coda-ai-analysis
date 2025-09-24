@@ -49,6 +49,12 @@ class PollingRequest(BaseModel):
     target4: Optional[str] = Field(default=None, description="Target content part 4")
     target5: Optional[str] = Field(default=None, description="Target content part 5")
     target6: Optional[str] = Field(default=None, description="Target content part 6")
+    context1: Optional[str] = Field(default=None, description="Analysis context part 1")
+    context2: Optional[str] = Field(default=None, description="Analysis context part 2")
+    context3: Optional[str] = Field(default=None, description="Analysis context part 3")
+    context4: Optional[str] = Field(default=None, description="Analysis context part 4")
+    context5: Optional[str] = Field(default=None, description="Analysis context part 5")
+    context6: Optional[str] = Field(default=None, description="Analysis context part 6")
     
     # PRE-BUILT PROMPTS FROM CODA
     system_prompt: Optional[str] = Field(default=None, description="Complete system prompt built by Coda")
@@ -79,11 +85,22 @@ class PollingRequest(BaseModel):
         target_parts = [part or '' for part in [self.target1, self.target2, self.target3, self.target4, self.target5, self.target6]]
         full_target = ''.join(target_parts)
         
-        # Combine into final content format
+        # Reconstruct context content
+        context_parts = [part or '' for part in [self.context1, self.context2, self.context3, self.context4, self.context5, self.context6]]
+        full_context = ''.join(context_parts)
+        
+        # Build final content structure
+        content_sections = []
+        
         if full_target:
-            return f"**TARGET CONTENT:**\n{full_target}\n\n**SOURCE CONTENT:**\n{full_source}"
-        else:
-            return f"**SOURCE CONTENT:**\n{full_source}"
+            content_sections.append(f"**TARGET CONTENT:**\n{full_target}")
+        
+        content_sections.append(f"**SOURCE CONTENT:**\n{full_source}")
+        
+        if full_context:
+            content_sections.append(f"**ANALYSIS CONTEXT:**\n{full_context}")
+        
+        return '\n\n'.join(content_sections)
     
     def to_analysis_request(self) -> 'AnalysisRequest':
         """Convert to AnalysisRequest for background processing"""

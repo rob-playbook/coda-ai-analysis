@@ -112,6 +112,42 @@ pack.addFormula({
     }),
     coda.makeParameter({
       type: coda.ParameterType.String,
+      name: "context1",
+      description: "Analysis context part 1",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "context2",
+      description: "Analysis context part 2",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "context3",
+      description: "Analysis context part 3",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "context4",
+      description: "Analysis context part 4",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "context5",
+      description: "Analysis context part 5",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
+      name: "context6",
+      description: "Analysis context part 6",
+      optional: true
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
       name: "systemPrompt",
       description: "System prompt",
       optional: true
@@ -156,7 +192,7 @@ pack.addFormula({
     })
   ],
   resultType: coda.ValueType.String,
-  execute: async function ([cacheBreaker, recordId, source1, userPrompt, source2, source3, source4, source5, source6, target1, target2, target3, target4, target5, target6, systemPrompt, model, maxTokens, temperature, extendedThinking, thinkingBudget, includeThinking], context) {
+  execute: async function ([cacheBreaker, recordId, source1, userPrompt, source2, source3, source4, source5, source6, target1, target2, target3, target4, target5, target6, context1, context2, context3, context4, context5, context6, systemPrompt, model, maxTokens, temperature, extendedThinking, thinkingBudget, includeThinking], context) {
     try {
       // Send split pieces directly to render service (don't reconstruct locally)
       const payload = {
@@ -173,6 +209,12 @@ pack.addFormula({
         target4: target4 || null,
         target5: target5 || null,
         target6: target6 || null,
+        context1: context1 || null,
+        context2: context2 || null,
+        context3: context3 || null,
+        context4: context4 || null,
+        context5: context5 || null,
+        context6: context6 || null,
         user_prompt: userPrompt,
         system_prompt: systemPrompt || "",
         model: model || "claude-3-7-sonnet-latest",
