@@ -31,11 +31,8 @@ class FileProcessor:
     def extract_file_urls(self, content: str) -> List[str]:
         """Extract FILE_URL entries from content string"""
         try:
-
-            
             # Handle both direct FILE_URL and wrapped content
             if not (content.startswith("FILE_URL:") or "FILE_URL:" in content):
-
                 return []
             
             # Split by comma and extract URLs - handle wrapped content
@@ -51,25 +48,18 @@ class FileProcessor:
             
             urls = []
             
-
-            
             for i, part in enumerate(parts):
                 part = part.strip()
-
                 
                 if part.startswith("FILE_URL:"):
                     url = part[9:]  # Remove "FILE_URL:" prefix
-
                     
                     if url and self._is_valid_url(url):
                         urls.append(url)
-
                     else:
                         logger.warning(f"Invalid URL found: {part} (extracted: {url[:50]}...)")
                 else:
                     logger.warning(f"Part does not start with FILE_URL: {part}")
-            
-            logger.info(f"Extracted {len(urls)} file URLs from content")
             return urls
             
         except Exception as e:
@@ -79,17 +69,13 @@ class FileProcessor:
     def _is_valid_url(self, url: str) -> bool:
         """Validate URL format and domain"""
         try:
-
-            
             parsed = urlparse(url)
-
             
             # Only allow Coda-hosted files for security
             is_valid = (parsed.scheme in ['https'] and 
                        parsed.netloc in ['codahosted.io', 'coda.imgix.net'] and
                        len(url) > 10)
             
-
             if not is_valid:
                 logger.warning(f"URL failed validation - scheme: {parsed.scheme}, netloc: {parsed.netloc}, length: {len(url)}")
             
@@ -120,8 +106,6 @@ class FileProcessor:
             timeout = aiohttp.ClientTimeout(total=60)  # 60 second timeout
             
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                logger.info(f"Downloading file from URL: {url[:50]}...")
-                
                 async with session.get(url) as response:
                     if response.status != 200:
                         raise Exception(f"HTTP {response.status}: Failed to download file")
@@ -141,8 +125,6 @@ class FileProcessor:
                     # Determine MIME type
                     content_type = response.headers.get('Content-Type')
                     mime_type = self._get_mime_type(url, content_type)
-                    
-                    logger.info(f"Downloaded file: {len(file_data)} bytes, type: {mime_type}")
                     return file_data, mime_type
                     
         except asyncio.TimeoutError:
@@ -161,7 +143,6 @@ class FileProcessor:
             raise Exception(f"Too many files: {len(urls)} (max 10)")
         
         try:
-            logger.info(f"Starting download of {len(urls)} files")
             
             # Download all files concurrently
             download_tasks = [self.download_file(url) for url in urls]
@@ -185,7 +166,6 @@ class FileProcessor:
                 })
             
             total_size = sum(f['size'] for f in files_data)
-            logger.info(f"Successfully downloaded {len(files_data)} files, total size: {total_size} bytes")
             
             return files_data
             
@@ -196,7 +176,6 @@ class FileProcessor:
     def extract_text_content(self, file_data: bytes, mime_type: str, filename: str = "") -> str:
         """Extract text content from various file types"""
         try:
-            logger.info(f"Extracting text content from {mime_type} file: {filename[:50]}...")
             
             if mime_type == 'text/plain':
                 return file_data.decode('utf-8')

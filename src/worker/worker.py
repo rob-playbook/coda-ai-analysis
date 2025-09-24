@@ -102,12 +102,10 @@ class AnalysisWorker:
                 
                 files_data = await self.file_processor.download_files(file_urls)
                 
-                # CRITICAL: Verify file download structure
-                logger.info(f"Downloaded files verification:")
+                # Verify file download structure
                 for i, file_info in enumerate(files_data):
-                    logger.info(f"  File {i+1}: {file_info['mime_type']}, {file_info['size']} bytes, base64: {len(file_info.get('base64_data', ''))} chars")
                     if 'base64_data' not in file_info:
-                        logger.error(f"  ERROR: File {i+1} missing base64_data!")
+                        logger.error(f"ERROR: File {i+1} missing base64_data!")
                 
                 # Step 2: Process files through Claude API  
                 combined_result = await self.claude_service.process_files(files_data, request_data)

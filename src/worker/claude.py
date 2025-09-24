@@ -59,15 +59,7 @@ class ClaudeService:
                 # Use requested temperature for normal operation
                 api_params["temperature"] = max(0.0, min(1.0, request_data.temperature))
             
-            logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
-            logger.info(f"CONTEXT DEBUG - Content being sent to Claude contains ANALYSIS CONTEXT: {'**ANALYSIS CONTEXT:**' in chunk_content}")
-            if '**ANALYSIS CONTEXT:**' in chunk_content:
-                context_start = chunk_content.find('**ANALYSIS CONTEXT:**')
-                context_preview = chunk_content[context_start:context_start+300] if context_start != -1 else 'Not found'
-                logger.info(f"CONTEXT DEBUG - ANALYSIS CONTEXT preview: '{context_preview}...'")
-            logger.info(f"API parameters: max_tokens={api_params['max_tokens']}, temperature={api_params.get('temperature', 'default')}")
-            logger.info(f"User prompt length: {len(request_data.user_prompt)} characters")
-            logger.info(f"System prompt length: {len(request_data.system_prompt) if request_data.system_prompt else 0} characters")
+
             start_time = time.time()
             
             # Add timeout protection to main API calls
@@ -90,11 +82,7 @@ class ClaudeService:
             
             end_time = time.time()
             
-            # === ESSENTIAL RESPONSE LOGGING ===
-            logger.info(f"Claude API responded in {end_time - start_time:.2f}s")
-            logger.info(f"Response stop_reason: {getattr(response, 'stop_reason', 'not available')}")
-            # logger.info(f"Response usage: {getattr(response, 'usage', 'not available')}")
-            # logger.info(f"Response content blocks: {len(response.content)}")
+
             
             # REMOVED: Verbose content block logging for performance
             # for i, block in enumerate(response.content):
@@ -109,49 +97,33 @@ class ClaudeService:
             
             # Process response content based on response type and thinking settings
             if request_data.max_tokens > 20000:  # Streaming was used - result already extracted
-                # logger.info(f"Streaming response processed, final length: {len(result)} chars")
-                # Result already set from streaming above, no further processing needed
                 pass
             elif request_data.extended_thinking and not request_data.include_thinking:
                 # Strip thinking blocks, keep only text blocks
                 text_blocks = [block.text for block in response.content if block.type == "text"]
                 result = "\n\n".join(text_blocks) if text_blocks else ""
-                # logger.info(f"Processed thinking response: {len(text_blocks)} text blocks, final length: {len(result)} chars")
             else:
                 # Include everything (default behavior) - get all content as text
                 if len(response.content) == 1:
                     # Single content block (normal case)
                     result = response.content[0].text
-                    # logger.info(f"Single content block processed, final length: {len(result)} chars")
                 else:
                     # Multiple content blocks - join all text content
                     all_text = []
                     for i, block in enumerate(response.content):
                         if hasattr(block, 'text'):
                             all_text.append(block.text)
-                            # logger.info(f"Added text block {i}: {len(block.text)} chars")
                         elif hasattr(block, 'thinking'):
                             all_text.append(block.thinking)
-                            # logger.info(f"Added thinking block {i}: {len(block.thinking)} chars")
                     result = "\n\n".join(all_text)
-                    # logger.info(f"Multiple content blocks processed: {len(all_text)} blocks, final length: {len(result)} chars")
-            
-            # === FINAL RESULT VALIDATION ===
-            # logger.info(f"FINAL RESULT - Length: {len(result)} characters")
-            # logger.info(f"FINAL RESULT - Starts with: {repr(result[:200])}")
-            # logger.info(f"FINAL RESULT - Ends with: {repr(result[-200:])}")
             
             # Check for potential truncation indicators
             if result.endswith(('00:', '<v ', 'So\n', '\n00:', '\n<v')):
-                # logger.error(f"⚠️  POTENTIAL TRUNCATION DETECTED - Response ends with: {repr(result[-50:])}")
                 pass
             
             # Check if response seems incomplete
             if len(result) < len(chunk_content) * 0.5:  # If response is less than 50% of input
-                # logger.warning(f"⚠️  UNUSUALLY SHORT RESPONSE - Input: {len(chunk_content)}, Output: {len(result)}")
                 pass
-            
-            # logger.info(f"Claude API responded in {end_time - start_time:.2f}s, returned {len(result)} characters")
             
             return result
             
@@ -344,7 +316,6 @@ Return the full reformatted analysis:
             
             # EXTRACT NON-FILE TEXT CONTENT from original content
             preserved_text = self._extract_non_file_content(request_data.content)
-            logger.info(f"Extracted preserved text content: {len(preserved_text)} characters")
             
             # Clean the user prompt
             clean_prompt = request_data.user_prompt
@@ -384,14 +355,14 @@ Return the full reformatted analysis:
             if len(clean_prompt.strip()) < 10:
                 clean_prompt = "Please analyze the provided documents and summarize their key content."
             
-            logger.info(f"Clean prompt for file processing: {clean_prompt[:200]}...")
+
             
             # **NEW LOGIC: Separate files by type**
             pdf_files = [f for f in files_data if f['mime_type'] == 'application/pdf']
             text_files = [f for f in files_data if f['mime_type'] != 'application/pdf' and 'image' not in f['mime_type']]
             image_files = [f for f in files_data if 'image' in f['mime_type']]
             
-            logger.info(f"File breakdown: {len(pdf_files)} PDFs, {len(text_files)} text files, {len(image_files)} images")
+
             
             # Start building content array
             content = [{
@@ -413,7 +384,6 @@ Return the full reformatted analysis:
                     }
                 }
                 content.append(doc_block)
-                logger.info(f"Added PDF document block {i+1}: {len(pdf_file['base64_data'])} chars base64")
             
             # Extract text from other files and add as regular text content
             if text_files:
@@ -431,8 +401,6 @@ Return the full reformatted analysis:
                         file_header = f"=== File: {text_file['url'].split('/')[-1]} ({text_file['mime_type']}) ==="
                         extracted_texts.append(f"{file_header}\n{text_content}")
                         
-                        logger.info(f"Extracted {len(text_content)} characters from {text_file['mime_type']} file")
-                        
                     except Exception as e:
                         logger.error(f"Failed to extract text from file {i+1}: {e}")
                         # Add error message instead of failing completely
@@ -446,7 +414,6 @@ Return the full reformatted analysis:
                         "type": "text",
                         "text": f"\n\nDocument Contents:\n{combined_text}"
                     })
-                    logger.info(f"Added extracted text content: {len(combined_text)} characters")
             
             # ADD PRESERVED NON-FILE TEXT CONTENT with file replacement
             if preserved_text.strip():
@@ -458,13 +425,11 @@ Return the full reformatted analysis:
                         "type": "text",
                         "text": f"\n\nAdditional Content:\n{reconstructed_text}"
                     })
-                    logger.info(f"Added preserved text with reconstructed ANALYSIS CONTEXT: {len(reconstructed_text)} characters")
                 else:
                     content.append({
                         "type": "text",
                         "text": f"\n\nAdditional Content:\n{preserved_text}"
                     })
-                    logger.info(f"Added preserved text content: {len(preserved_text)} characters")
             
             # Add images as image blocks (if any)
             for i, image_file in enumerate(image_files):
@@ -481,9 +446,8 @@ Return the full reformatted analysis:
                     }
                 }
                 content.append(image_block)
-                logger.info(f"Added image block {i+1}: {image_file['mime_type']}, {len(image_file['base64_data'])} chars base64")
             
-            logger.info(f"Final content array: {len(content)} blocks")
+
             
             # Build API parameters
             api_params = {
@@ -510,7 +474,7 @@ Return the full reformatted analysis:
             else:
                 api_params["temperature"] = max(0.0, min(1.0, request_data.temperature))
             
-            logger.info(f"Calling Claude API with mixed content: {len(pdf_files)} PDFs, {len(text_files)} text extracts, {len(image_files)} images")
+
             
             start_time = time.time()
             
@@ -554,8 +518,7 @@ Return the full reformatted analysis:
                             all_text.append(block.thinking)
                     result = "\n\n".join(all_text)
             
-            logger.info(f"Claude API file processing completed in {end_time - start_time:.2f}s")
-            logger.info(f"Response length: {len(result)} characters")
+
             
             return result
             
