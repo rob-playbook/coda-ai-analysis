@@ -87,8 +87,8 @@ async def start_analysis(request: PollingRequest):
             )
         
         # DETECT FILE PROCESSING vs TEXT PROCESSING
-        # Account for SOURCE CONTENT wrapper from reconstruct_content()
-        is_file_request = content.startswith("FILE_URL:") or "FILE_URL:" in content[:500]
+        # Check entire content for FILE_URL, not just first 500 chars
+        is_file_request = content.startswith("FILE_URL:") or "FILE_URL:" in content
         
         logger.info(f"CONTEXT DEBUG - File detection: is_file_request={is_file_request}, content contains FILE_URL: {'FILE_URL:' in content}")
         if 'FILE_URL:' in content:
