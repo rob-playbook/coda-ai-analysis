@@ -448,13 +448,23 @@ Return the full reformatted analysis:
                     })
                     logger.info(f"Added extracted text content: {len(combined_text)} characters")
             
-            # ADD PRESERVED NON-FILE TEXT CONTENT (the missing piece!)
+            # ADD PRESERVED NON-FILE TEXT CONTENT with file replacement
             if preserved_text.strip():
-                content.append({
-                    "type": "text",
-                    "text": f"\n\nAdditional Content:\n{preserved_text}"
-                })
-                logger.info(f"Added preserved text content: {len(preserved_text)} characters")
+                # Check if preserved text contains ANALYSIS CONTEXT section
+                if "**ANALYSIS CONTEXT:**" in preserved_text:
+                    # Reconstruct ANALYSIS CONTEXT with processed file content
+                    reconstructed_text = self._reconstruct_analysis_context_with_files(preserved_text, files_data, file_processor)
+                    content.append({
+                        "type": "text",
+                        "text": f"\n\nAdditional Content:\n{reconstructed_text}"
+                    })
+                    logger.info(f"Added preserved text with reconstructed ANALYSIS CONTEXT: {len(reconstructed_text)} characters")
+                else:
+                    content.append({
+                        "type": "text",
+                        "text": f"\n\nAdditional Content:\n{preserved_text}"
+                    })
+                    logger.info(f"Added preserved text content: {len(preserved_text)} characters")
             
             # Add images as image blocks (if any)
             for i, image_file in enumerate(image_files):
@@ -614,6 +624,64 @@ Ignore WHO is doing it, focus only on WHAT is being done."""
         except asyncio.TimeoutError:
             # logger.warning("Name generation timed out - using default name")
             return "AI Analysis Result"
+    
+    def _reconstruct_analysis_context_with_files(self, preserved_text: str, files_data: List[Dict[str, any]], file_processor) -> str:
+        """
+        Reconstruct ANALYSIS CONTEXT section, replacing FILE_URLs with processed file content
+        """
+        try:
+            lines = preserved_text.split('\n')
+            reconstructed_lines = []
+            in_analysis_context = False
+            
+            for line in lines:
+                line_stripped = line.strip()
+                
+                if line_stripped == "**ANALYSIS CONTEXT:**":
+                    in_analysis_context = True
+                    reconstructed_lines.append(line)
+                elif line_stripped.startswith("**") and line_stripped.endswith(":**"):
+                    in_analysis_context = False
+                    reconstructed_lines.append(line)
+                elif in_analysis_context and "FILE_URL:" in line:
+                    # Find the corresponding processed file content
+                    file_url_start = line.find('FILE_URL:')
+                    if file_url_start > 0:
+                        label_part = line[:file_url_start].rstrip(' :,-')
+                        url_part = line[file_url_start + 9:].strip()  # Remove FILE_URL: prefix
+                        
+                        # Find matching file in processed files_data
+                        file_content = "[File content not found]"
+                        for file_data in files_data:
+                            if url_part in file_data.get('url', ''):
+                                if file_data['mime_type'] == 'application/pdf':
+                                    file_content = "[PDF content processed as document block]"
+                                else:
+                                    try:
+                                        file_content = file_processor.extract_text_content(
+                                            file_data['data'], 
+                                            file_data['mime_type'], 
+                                            file_data['url']
+                                        )
+                                        # Truncate very long content
+                                        if len(file_content) > 500:
+                                            file_content = file_content[:500] + "..."
+                                    except Exception as e:
+                                        file_content = f"[Error extracting file content: {str(e)}]"
+                                break
+                        
+                        reconstructed_lines.append(f"{label_part}: {file_content}")
+                        logger.info(f"Replaced FILE_URL with content for: {label_part.strip()}")
+                    else:
+                        reconstructed_lines.append(line)  # Keep as is if parsing fails
+                else:
+                    reconstructed_lines.append(line)
+            
+            return '\n'.join(reconstructed_lines)
+            
+        except Exception as e:
+            logger.error(f"Error reconstructing ANALYSIS CONTEXT: {e}")
+            return preserved_text  # Return original on error
     
     def _extract_non_file_content(self, original_content: str) -> str:
         """

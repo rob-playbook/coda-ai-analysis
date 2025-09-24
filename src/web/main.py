@@ -61,6 +61,7 @@ async def start_analysis(request: PollingRequest):
     """
     NEW: Start analysis - try synchronous first, fallback to async
     """
+    logger.info(f"WEB SERVICE HIT - Record ID: {request.record_id}")
     try:
         # DEBUG LOGGING for incoming context parameters
         context_params = [request.context1, request.context2, request.context3, request.context4, request.context5, request.context6]
