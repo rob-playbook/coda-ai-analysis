@@ -423,7 +423,7 @@ Return the full reformatted analysis:
                     reconstructed_text = self._reconstruct_analysis_context_with_files(preserved_text, files_data, file_processor)
                     content.append({
                         "type": "text",
-                        "text": f"\n\nAdditional Content:\n{reconstructed_text}"
+                        "text": f"\n\n{reconstructed_text}"
                     })
                 else:
                     content.append({
