@@ -17,6 +17,7 @@ def setup_logging():
     
     # Set specific loggers
     logging.getLogger("anthropic").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # Suppress HTTP request logs
     logging.getLogger("aiohttp").setLevel(logging.WARNING)
     logging.getLogger("uvicorn").setLevel(logging.INFO)
     logging.getLogger("redis").setLevel(logging.WARNING)

@@ -43,7 +43,7 @@ class JobQueue:
             # Add to processing queue
             self.redis.lpush(self.job_queue_key, job.job_id)
             
-            logger.info(f"Job queued: {job.job_id}")
+            # logger.info(f"Job queued: {job.job_id}")
             return True
         except Exception as e:
             logger.error(f"Failed to enqueue job {job.job_id}: {e}")
@@ -88,7 +88,7 @@ class JobQueue:
             self.redis.setex(job_key, 86400, job.json())
             self.redis.srem(self.processing_key, job.job_id)
             
-            logger.info(f"Job completed: {job.job_id}")
+            # logger.info(f"Job completed: {job.job_id}")
             return True
         except Exception as e:
             logger.error(f"Failed to complete job {job.job_id}: {e}")
@@ -139,7 +139,7 @@ class JobQueue:
             # Re-queue for processing
             self.enqueue_job(job)
             
-            logger.info(f"Job retried: {job.job_id} (attempt {job.retry_count + 1})")
+            # logger.info(f"Job retried: {job.job_id} (attempt {job.retry_count + 1})")
             return True
         except Exception as e:
             logger.error(f"Failed to retry job {job.job_id}: {e}")
@@ -150,7 +150,7 @@ class JobQueue:
         try:
             result_key = self.result_key.format(job_id=job_id)
             self.redis.setex(result_key, 86400, result.json())  # 24 hour expiry
-            logger.info(f"Result stored for job: {job_id}")
+            # logger.info(f"Result stored for job: {job_id}")
             return True
         except Exception as e:
             logger.error(f"Failed to store result for job {job_id}: {e}")

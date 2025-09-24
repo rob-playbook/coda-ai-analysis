@@ -285,7 +285,7 @@ class AnalysisWorker:
                         headers=headers
                     ) as response:
                         if response.status in [200, 202]:  # Accept both OK and Accepted
-                            logger.info(f"Coda webhook notification sent successfully for job {job_id}")
+                            # logger.info(f"Coda webhook notification sent successfully for job {job_id}")
                             return True
                         else:
                             response_text = await response.text()
@@ -313,7 +313,7 @@ class AnalysisWorker:
                     
                     async with session.post(webhook_url, json=payload) as response:
                         if response.status == 200:
-                            logger.info(f"Legacy webhook sent successfully for record {result.record_id}")
+                            # logger.info(f"Legacy webhook sent successfully for record {result.record_id}")
                             return True
                         else:
                             logger.warning(f"Legacy webhook failed with status {response.status}, attempt {attempt + 1}")
