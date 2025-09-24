@@ -167,11 +167,10 @@ class AnalysisWorker:
                     }
                 )
             else:
-                # Step 4: Quality assessment (only for successful processing)
-                quality_status = await self.claude_service.assess_quality(combined_result, request_data)
-                
-                # Step 5: Generate analysis name (only for successful processing) 
-                analysis_name = await self.claude_service.generate_analysis_name(combined_result, request_data)
+                # Steps 4&5: Quality assessment + name generation (parallel for performance)
+                quality_task = self.claude_service.assess_quality(combined_result, request_data)
+                name_task = self.claude_service.generate_analysis_name(combined_result, request_data)
+                quality_status, analysis_name = await asyncio.gather(quality_task, name_task)
                 
                 # Store result - use actual quality status and Claude's response as error message
                 processing_time = time.time() - start_time
