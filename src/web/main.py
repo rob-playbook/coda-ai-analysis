@@ -90,6 +90,11 @@ async def start_analysis(request: PollingRequest):
         # Account for SOURCE CONTENT wrapper from reconstruct_content()
         is_file_request = content.startswith("FILE_URL:") or "FILE_URL:" in content[:500]
         
+        logger.info(f"CONTEXT DEBUG - File detection: is_file_request={is_file_request}, content contains FILE_URL: {'FILE_URL:' in content}")
+        if 'FILE_URL:' in content:
+            file_url_positions = [i for i, char in enumerate(content) if content[i:].startswith('FILE_URL:')]
+            logger.info(f"CONTEXT DEBUG - FILE_URL positions in content: {file_url_positions[:3]}...")  # Show first 3 positions
+        
         # Generate job ID
         job_id = str(uuid.uuid4())
         
@@ -99,6 +104,10 @@ async def start_analysis(request: PollingRequest):
             
             # Extract file URLs
             file_urls = file_processor.extract_file_urls(content)
+            
+            logger.info(f"CONTEXT DEBUG - File URLs extracted: {len(file_urls)} files")
+            for i, url in enumerate(file_urls[:3]):  # Show first 3
+                logger.info(f"CONTEXT DEBUG - File {i+1}: {url[:100]}...")
             
             if not file_urls:
                 logger.error(f"No valid file URLs found. Raw content was: {content}")

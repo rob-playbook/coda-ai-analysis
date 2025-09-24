@@ -619,19 +619,51 @@ Ignore WHO is doing it, focus only on WHAT is being done."""
         """
         Extract non-FILE_URL text content from mixed content
         This preserves regular text while removing FILE_URL entries
+        FIXED: Preserves ANALYSIS CONTEXT structure labels
         """
         try:
             # Split content by lines to process line by line
             lines = original_content.split('\n')
             preserved_lines = []
             
+            in_analysis_context = False
+            
             for line in lines:
                 line_stripped = line.strip()
-                # Keep lines that don't contain FILE_URL references
-                if not line_stripped.startswith('FILE_URL:') and 'FILE_URL:' not in line_stripped:
+                
+                # Track which section we're in
+                if line_stripped == "**ANALYSIS CONTEXT:**":
+                    in_analysis_context = True
                     preserved_lines.append(line)
+                    continue
+                elif line_stripped.startswith("**") and line_stripped.endswith(":**"):
+                    # Entering a different section
+                    in_analysis_context = False
+                    preserved_lines.append(line)
+                    continue
+                
+                # Handle FILE_URL lines based on section
+                if 'FILE_URL:' in line_stripped:
+                    if in_analysis_context:
+                        # In ANALYSIS CONTEXT: preserve the context label part only
+                        if 'FILE_URL:' in line:
+                            file_url_index = line.find('FILE_URL:')
+                            if file_url_index > 0:
+                                # Keep everything before FILE_URL
+                                label_part = line[:file_url_index].rstrip(' :,-')
+                                if label_part.strip():
+                                    preserved_lines.append(label_part)
+                                    logger.info(f"Preserved ANALYSIS CONTEXT label: {label_part.strip()}")
+                            else:
+                                logger.info(f"Filtering out pure FILE_URL line in context: {line_stripped[:100]}...")
+                        else:
+                            logger.info(f"Filtering out FILE_URL line: {line_stripped[:100]}...")
+                    else:
+                        # In other sections: remove entire FILE_URL line (current behavior)
+                        logger.info(f"Filtering out FILE_URL line: {line_stripped[:100]}...")
                 else:
-                    logger.info(f"Filtering out FILE_URL line: {line_stripped[:100]}...")
+                    # No FILE_URL: keep the line as is
+                    preserved_lines.append(line)
             
             preserved_content = '\n'.join(preserved_lines).strip()
             logger.info(f"Preserved {len(preserved_content)} characters of non-file content")
