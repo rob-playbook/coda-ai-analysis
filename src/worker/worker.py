@@ -86,7 +86,7 @@ class AnalysisWorker:
             
             # DETECT FILE vs TEXT PROCESSING
             # Account for SOURCE CONTENT wrapper from reconstruct_content()
-            is_file_request = request_data.content.startswith("FILE_URL:") or "FILE_URL:" in request_data.content[:500]
+            is_file_request = request_data.content.startswith("FILE_URL:") or "FILE_URL:" in request_data.content
             
             if is_file_request:
                 # FILE PROCESSING PATH
