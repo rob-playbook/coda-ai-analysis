@@ -59,7 +59,9 @@ class ClaudeService:
                 # Use requested temperature for normal operation
                 api_params["temperature"] = max(0.0, min(1.0, request_data.temperature))
             
-
+            logger.info(f"Calling Claude API with {len(chunk_content)} characters using model: {request_data.model}")
+            logger.info(f"User prompt length: {len(request_data.user_prompt)} characters")
+            logger.info(f"System prompt length: {len(request_data.system_prompt) if request_data.system_prompt else 0} characters")
             start_time = time.time()
             
             # Add timeout protection to main API calls
@@ -81,6 +83,7 @@ class ClaudeService:
                     result = response.content[0].text
             
             end_time = time.time()
+            logger.info(f"Claude API responded in {end_time - start_time:.2f}s")
             
 
             
@@ -171,7 +174,8 @@ class ClaudeService:
         
         for i, chunk in enumerate(chunks):
             try:
-                logger.info(f"Processing chunk {i+1}/{len(chunks)}")
+                if len(chunks) > 1:
+                    logger.info(f"Processing chunk {i+1}/{len(chunks)}")
                 result = await self.process_chunk(chunk, request_data)
                 results.append(result)
                 

@@ -122,7 +122,8 @@ class AnalysisWorker:
                 )
                 
                 chunk_count = len(chunks)
-                logger.info(f"Content split into {chunk_count} chunks for job {job.job_id}")
+                if chunk_count > 1:
+                    logger.info(f"Content split into {chunk_count} chunks for job {job.job_id}")
                 
                 # Step 2: Process chunks through Claude API
                 results = await self.claude_service.process_chunks_sequential(
@@ -285,7 +286,7 @@ class AnalysisWorker:
                         headers=headers
                     ) as response:
                         if response.status in [200, 202]:  # Accept both OK and Accepted
-                            # logger.info(f"Coda webhook notification sent successfully for job {job_id}")
+                            logger.info(f"Coda webhook notification sent successfully for job {job_id}")
                             return True
                         else:
                             response_text = await response.text()

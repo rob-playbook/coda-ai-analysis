@@ -32,11 +32,11 @@ class ContentChunker:
             
             # Check if content fits within single chunk threshold
             if total_tokens < self.single_chunk_threshold:
-                logger.info(f"Content fits in single chunk ({total_tokens:,} tokens < {self.single_chunk_threshold:,}), skipping chunking")
+                # Only log chunking info when multiple chunks would be created
                 return [content]
             
             # Content is very large - use chunking with larger chunk sizes
-            # logger.info(f"Content requires chunking ({total_tokens:,} tokens > {self.single_chunk_threshold:,})")
+            logger.info(f"Content requires chunking ({total_tokens:,} tokens > {self.single_chunk_threshold:,})")
             available_tokens = 25000 - prompt_tokens - 500  # Larger chunks for multi-chunk scenarios
             
             if available_tokens <= 1000:
