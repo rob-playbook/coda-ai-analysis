@@ -64,12 +64,12 @@ async def start_analysis(request: PollingRequest):
     logger.info(f"WEB SERVICE HIT - Record ID: {request.record_id}")
     try:
         # DEBUG LOGGING for incoming context parameters
-        context_params = [request.context1, request.context2, request.context3, request.context4, request.context5, request.context6]
-        context_lengths = [len(param or '') for param in context_params]
-        logger.info(f"CONTEXT DEBUG - Received context parameters: {context_lengths} (char lengths)")
-        for i, param in enumerate(context_params, 1):
-            if param:
-                logger.info(f"CONTEXT DEBUG - context{i}: '{param[:100]}...'") 
+        # context_params = [request.context1, request.context2, request.context3, request.context4, request.context5, request.context6]
+        # context_lengths = [len(param or '') for param in context_params]
+        # logger.info(f"CONTEXT DEBUG - Received context parameters: {context_lengths} (char lengths)")
+        # for i, param in enumerate(context_params, 1):
+        #     if param:
+        #         logger.info(f"CONTEXT DEBUG - context{i}: '{param[:100]}...'") 
         
         # Reconstruct content from split pieces
         content = request.reconstruct_content()
@@ -91,10 +91,10 @@ async def start_analysis(request: PollingRequest):
         # Check entire content for FILE_URL, not just first 500 chars
         is_file_request = content.startswith("FILE_URL:") or "FILE_URL:" in content
         
-        logger.info(f"CONTEXT DEBUG - File detection: is_file_request={is_file_request}, content contains FILE_URL: {'FILE_URL:' in content}, content length: {len(content)}")
-        if 'FILE_URL:' in content:
-            file_url_positions = [i for i, char in enumerate(content) if content[i:].startswith('FILE_URL:')]
-            logger.info(f"CONTEXT DEBUG - FILE_URL positions in content: {file_url_positions[:3]}...")  # Show first 3 positions
+        # logger.info(f"CONTEXT DEBUG - File detection: is_file_request={is_file_request}, content contains FILE_URL: {'FILE_URL:' in content}, content length: {len(content)}")
+        # if 'FILE_URL:' in content:
+        #     file_url_positions = [i for i, char in enumerate(content) if content[i:].startswith('FILE_URL:')]
+        #     logger.info(f"CONTEXT DEBUG - FILE_URL positions in content: {file_url_positions[:3]}...")  # Show first 3 positions
         
         # Generate job ID
         job_id = str(uuid.uuid4())
@@ -106,9 +106,9 @@ async def start_analysis(request: PollingRequest):
             # Extract file URLs
             file_urls = file_processor.extract_file_urls(content)
             
-            logger.info(f"CONTEXT DEBUG - File URLs extracted: {len(file_urls)} files")
-            for i, url in enumerate(file_urls[:3]):  # Show first 3
-                logger.info(f"CONTEXT DEBUG - File {i+1}: {url[:100]}...")
+            # logger.info(f"CONTEXT DEBUG - File URLs extracted: {len(file_urls)} files")
+            # for i, url in enumerate(file_urls[:3]):  # Show first 3
+            #     logger.info(f"CONTEXT DEBUG - File {i+1}: {url[:100]}...")
             
             if not file_urls:
                 logger.error(f"No valid file URLs found. Raw content was: {content}")
@@ -140,9 +140,9 @@ async def start_analysis(request: PollingRequest):
             }
         
         # TEXT PROCESSING PATH
-        # Try synchronous processing first (40 second timeout)
+        # Try synchronous processing first (10 second timeout)
         try:
-            async with asyncio.timeout(40):
+            async with asyncio.timeout(10):
                 # Quick analysis for small content
                 if len(content) < 10000:  # Small content threshold
                     chunks = chunker.chunk_content(content, request.user_prompt)
