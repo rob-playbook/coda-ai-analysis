@@ -480,6 +480,13 @@ Return the full reformatted analysis:
             
 
             
+            # Log character counts for file processing
+            total_content_chars = sum(len(str(block.get('text', ''))) for block in content if block.get('type') == 'text')
+            logger.info(f"Calling Claude API for file processing with {len(files_data)} files using model: {request_data.model}")
+            logger.info(f"User prompt length: {len(clean_prompt)} characters")
+            logger.info(f"System prompt length: {len(request_data.system_prompt) if request_data.system_prompt else 0} characters")
+            logger.info(f"Total text content: {total_content_chars} characters")
+            
             start_time = time.time()
             
             # Files require longer timeout due to processing overhead
@@ -500,6 +507,7 @@ Return the full reformatted analysis:
                     result = response.content[0].text
             
             end_time = time.time()
+            logger.info(f"Claude API responded in {end_time - start_time:.2f}s for file processing")
             
             # Process response content based on thinking settings
             if request_data.max_tokens > 20000:
