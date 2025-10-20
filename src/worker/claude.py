@@ -203,10 +203,28 @@ class ClaudeService:
         
         These responses break automated workflows even though they're "helpful".
         
+        INTERACTIVE PROMPT DETECTION: Skips quality assessment for prompts that
+        explicitly request user confirmation or interactive feedback, as these
+        patterns are intentional rather than failures.
+        
         TIMEOUT PROTECTION: Falls back to SUCCESS if quality assessment fails/times out.
         Main analysis should never fail due to quality assessment issues.
         """
         try:
+            # PRE-CHECK: Does prompt explicitly request interactive feedback?
+            interactive_patterns = [
+                "ask me if I confirm",
+                "confirm with yes or no",
+                "Do you confirm",
+                "ask me to confirm",
+                "provide alternative interpretations"
+            ]
+            
+            prompt_lower = request_data.user_prompt.lower()
+            if any(pattern.lower() in prompt_lower for pattern in interactive_patterns):
+                logger.info(f"Interactive prompt detected - bypassing quality assessment")
+                return "SUCCESS"
+            
             # Add timeout protection - quality assessment should not break main analysis
             async with asyncio.timeout(15):  # 15-second timeout for quality assessment
                 # logger.info("Starting quality assessment using model: claude-sonnet-4-20250514")
