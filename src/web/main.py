@@ -258,10 +258,13 @@ async def get_analysis_result(job_id: str):
     CRITICAL: Uses actual quality assessment result, not hardcoded "complete".
     This ensures failed quality assessments are properly returned as "failed".
     """
+    logger.info(f"📊 POLL REQUEST - Job ID: {job_id}")
+    
     try:
         # First check if we have a stored result (works for both sync and async)
         result = job_queue.get_job_result(job_id)
         if result:
+            logger.info(f"✅ POLL RESPONSE - Job {job_id}: Status={result.status}, Path=stored_result")
             return {
                 "job_id": job_id,
                 "status": "complete" if result.status == "SUCCESS" else "failed",
@@ -275,33 +278,44 @@ async def get_analysis_result(job_id: str):
         job = job_queue.get_job(job_id)
         
         if not job:
+            logger.warning(f"❌ POLL RESPONSE - Job {job_id}: NOT FOUND (404)")
             raise HTTPException(status_code=404, detail="Job not found")
         
         if job.status == JobStatus.SUCCESS:
             # Job marked success but no result stored - data issue
+            logger.error(f"⚠️ POLL RESPONSE - Job {job_id}: SUCCESS but no result data (data loss)")
             return {
                 "job_id": job_id,
                 "status": "failed",
                 "error_message": "Analysis completed but result data not found"
             }
         elif job.status == JobStatus.FAILED:
+            logger.info(f"❌ POLL RESPONSE - Job {job_id}: FAILED, Error={job.error_message}")
             return {
                 "job_id": job_id,
                 "status": "failed",
                 "error_message": job.error_message or "Analysis failed"
             }
         else:
-            # Still processing
+            # Still processing - calculate elapsed time
+            elapsed_time = time.time() - (job.started_at or job.created_at)
+            in_queue = job.started_at is None
+            status_detail = "in_queue" if in_queue else "actively_processing"
+            
+            logger.info(f"⏳ POLL RESPONSE - Job {job_id}: PROCESSING, Status={status_detail}, Elapsed={elapsed_time:.1f}s, Retry={job.retry_count}")
+            
             return {
                 "job_id": job_id,
                 "status": "processing",
                 "message": "Analysis still in progress"
             }
             
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions
+    except HTTPException as e:
+        # Log HTTP exceptions before re-raising
+        logger.warning(f"🚫 POLL ERROR - Job {job_id}: HTTP {e.status_code} - {e.detail}")
+        raise
     except Exception as e:
-        logger.error(f"Result retrieval failed: {e}")
+        logger.error(f"💥 POLL ERROR - Job {job_id}: Unexpected error - {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # =================== WEBHOOK ENDPOINTS (EXISTING) ===================
