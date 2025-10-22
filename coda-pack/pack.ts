@@ -348,12 +348,17 @@ pack.addFormula({
   parameters: [
     coda.makeParameter({
       type: coda.ParameterType.String,
+      name: "cacheBreaker",
+      description: "Timestamp to prevent caching - use Now().ToText()"
+    }),
+    coda.makeParameter({
+      type: coda.ParameterType.String,
       name: "jobId",
       description: "Job ID"
     })
   ],
   resultType: coda.ValueType.String,
-  execute: async function ([jobId], context) {
+  execute: async function ([cacheBreaker, jobId], context) {
     try {
       const response = await context.fetcher.fetch({
         method: "GET",
