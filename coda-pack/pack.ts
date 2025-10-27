@@ -345,6 +345,7 @@ pack.addFormula({
 pack.addFormula({
   name: "CheckResults",
   description: "Check analysis results",
+  cacheTtlSecs: 0,  // Disable formula-level caching
   parameters: [
     coda.makeParameter({
       type: coda.ParameterType.String,
@@ -363,6 +364,7 @@ pack.addFormula({
       const response = await context.fetcher.fetch({
         method: "GET",
         url: `https://coda-ai-web.onrender.com/response/${jobId}`,
+        cacheTtlSecs: 0,  // Disable caching - always fetch fresh results
         timeoutSeconds: 30  // Timeout for results check
       });
 
