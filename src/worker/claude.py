@@ -190,146 +190,104 @@ class ClaudeService:
         return results
     
     async def assess_quality(self, analysis_result: str, request_data: Any) -> str:
-        """Assess quality of analysis result using layered approach
-
-        LAYER 1: Pattern-based pre-checks (zero cost, handles 90% of cases)
-        - Empty responses
-        - Explicit refusals
-        - Linking tasks with ID format
-        - Substantial content with no failure signals
-
-        LAYER 2: Lightweight API check (only for ambiguous cases, 80% cheaper)
-        - Uses 2K token sample instead of 10K
-        - Catches edge cases like content mismatch
-
+        """Assess quality of analysis result using separate Claude call
+        
+        Enhanced to catch "helpful but not actionable" responses as failures.
+        Business requirement: Must deliver analysis, not ask for clarification.
+        
+        Uses explicit pattern matching for common failure phrases like:
+        - "I cannot provide the requested analysis"
+        - "doesn't match what I expected" 
+        - "Would you like me to:"
+        - "Since this content doesn't align with..."
+        
+        These responses break automated workflows even though they're "helpful".
+        
+        INTERACTIVE PROMPT DETECTION: Skips quality assessment for prompts that
+        explicitly request user confirmation or interactive feedback, as these
+        patterns are intentional rather than failures.
+        
         TIMEOUT PROTECTION: Falls back to SUCCESS if quality assessment fails/times out.
         Main analysis should never fail due to quality assessment issues.
         """
         try:
-            # ═══════════════════════════════════════════════════════════
-            # LAYER 1: PATTERN-BASED PRE-CHECKS (zero cost, instant)
-            # ═══════════════════════════════════════════════════════════
-
-            prompt_lower = request_data.user_prompt.lower()
-
-            # Check 1: Empty or tiny response (OBVIOUS FAILURE)
-            if len(analysis_result.strip()) < 100:
-                logger.info("Quality FAILED: Response too short (<100 chars)")
-                return "FAILED"
-
-            # Check 2: Explicit refusal in first 500 chars (OBVIOUS FAILURE)
-            first_500 = analysis_result[:500].lower()
-            refusal_patterns = [
-                "i cannot complete this",
-                "i'm unable to provide",
-                "i cannot analyze",
-                "i'm not able to",
-                "unable to complete",
-                "[error code:",
-                "processing failed"
-            ]
-            if any(pattern in first_500 for pattern in refusal_patterns):
-                logger.info("Quality FAILED: Explicit refusal detected")
-                return "FAILED"
-
-            # Check 3: LINKING/TAGGING TASKS - Check for ID format (CRITICAL FOR TAGGING)
-            linking_keywords = ["add id", "link target", "add note id", "obs:", "note:", "ins:", "tag"]
-            if any(kw in prompt_lower for kw in linking_keywords):
-                # Success = output contains expected ID format
-                id_formats = ["obs:", "ins:", "note:", "| obs:", "| ins:", "| note:"]
-                if any(fmt in analysis_result for fmt in id_formats):
-                    logger.info("Quality SUCCESS: Linking task has ID format (zero cost check)")
-                    return "SUCCESS"
-                else:
-                    logger.info("Quality FAILED: Linking task missing ID format")
-                    return "FAILED"
-
-            # Check 4: Interactive prompts (INTENTIONAL, not failures)
+            # PRE-CHECK: Does prompt explicitly request interactive feedback?
             interactive_patterns = [
-                "ask me if i confirm",
+                "ask me if I confirm",
                 "confirm with yes or no",
-                "do you confirm",
+                "Do you confirm",
                 "ask me to confirm",
                 "provide alternative interpretations"
             ]
-            if any(pattern in prompt_lower for pattern in interactive_patterns):
-                logger.info("Quality SUCCESS: Interactive prompt detected (intentional)")
+            
+            prompt_lower = request_data.user_prompt.lower()
+            if any(pattern.lower() in prompt_lower for pattern in interactive_patterns):
+                logger.info(f"Interactive prompt detected - bypassing quality assessment")
                 return "SUCCESS"
+            
+            # Add timeout protection - quality assessment should not break main analysis
+            async with asyncio.timeout(15):  # 15-second timeout for quality assessment
+                # logger.info("Starting quality assessment using model: claude-sonnet-4-20250514")
+                assessment_prompt = f"""IMPORTANT: Start your response with either SUCCESS or FAILED as the very first word.
 
-            # Check 5: Content mismatch WITH refusal (REAL FAILURE)
-            mismatch_patterns = [
-                "this is a transcript, not",
-                "this appears to be a",
-                "the content provided is a",
-                "this content is a"
-            ]
-            has_mismatch = any(pattern in first_500 for pattern in mismatch_patterns)
+You are evaluating whether an AI completed the requested task.
 
-            if has_mismatch:
-                # Mismatch found - does it REFUSE to proceed?
-                refusal_after_mismatch = ["i cannot", "i'm unable", "unable to analyze"]
-                if any(r in first_500 for r in refusal_after_mismatch):
-                    logger.info("Quality FAILED: Content mismatch + refusal")
-                    return "FAILED"
-                # Mismatch but still provides analysis = SUCCESS (graceful adaptation)
-                logger.info("Quality SUCCESS: Content mismatch handled gracefully")
-                return "SUCCESS"
+ORIGINAL REQUEST: {request_data.user_prompt[:500]}
 
-            # Check 6: Substantial content + no failure signals = SUCCESS
-            if len(analysis_result) > 1000:
-                logger.info("Quality SUCCESS: Substantial content, no failure signals (zero cost check)")
-                return "SUCCESS"
+AI RESPONSE: {analysis_result[:10000]}
 
-            # ═══════════════════════════════════════════════════════════
-            # LAYER 2: LIGHTWEIGHT API CHECK (only for ambiguous cases)
-            # ═══════════════════════════════════════════════════════════
+EVALUATION QUESTIONS:
 
-            logger.info("Ambiguous case - running lightweight API quality check")
+1. CONTENT TYPE MISMATCH: Does the AI explicitly state that the provided content is the wrong type for what was requested?
+   - Look for phrases like "This is a transcript, not a research brief" or "This appears to be X when you asked for Y"
 
-            # Smart sampling: first 1K + last 1K (instead of first 10K)
-            sample = analysis_result[:1000]
-            if len(analysis_result) > 2000:
-                sample += "\n\n...[middle content truncated]...\n\n" + analysis_result[-1000:]
+2. EXPLICIT REFUSAL: Does the AI state it cannot complete the requested task?
+   - Look for phrases like "I cannot analyze this" or "I'm unable to provide the requested analysis"
 
-            # Shorter, focused prompt
-            assessment_prompt = f"""Start with SUCCESS or FAILED.
+3. SEEKING CLARIFICATION: Does the AI ask questions instead of providing analysis?
+   - Look for phrases like "Would you like me to..." or "Please provide..." or "Which approach would you prefer?"
 
-REQUEST: {request_data.user_prompt[:300]}
+4. TECHNICAL FAILURES: Are there error messages, processing failures, or empty responses?
+   - Look for error codes, "processing failed", responses under 50 characters
 
-RESPONSE SAMPLE: {sample}
+EVALUATION RULES:
+- If YES to any of questions 1-4: FAILED
+- If NO to all questions 1-4: SUCCESS
 
-Did the AI deliver the requested analysis?
-- SUCCESS if: Completed task, provided substantive analysis
-- FAILED if: Refused task, asked clarifying questions instead of delivering, content mismatch with refusal
+You must respond with either SUCCESS or FAILED only.
 
-Answer: SUCCESS or FAILED"""
+Be strict: If the AI identifies that content doesn't match what was requested, that's FAILED regardless of any attempted workarounds."""
 
-            # Add timeout protection
-            async with asyncio.timeout(15):
                 response = self.client.messages.create(
                     model="claude-sonnet-4-20250514",
-                    max_tokens=10,  # Just need SUCCESS or FAILED
+                    max_tokens=50,  # Allow enough tokens for reasoning
                     temperature=0.0,
-                    system="Evaluate if AI delivered the requested analysis. Be lenient: only mark FAILED if truly refused or provided no useful output.",
+                    system="You are an intelligent quality evaluator for automated workflows. Assess whether the AI response successfully fulfills the original request using semantic understanding, not pattern matching. Consider content alignment, completeness, and whether the deliverables match what was specifically asked for.",
                     messages=[{"role": "user", "content": assessment_prompt}]
                 )
-
+                
                 result = response.content[0].text.strip().upper()
+                
+                # Extract just the first word (SUCCESS or FAILED) from response
                 first_word = result.split()[0] if result.split() else result
-
+                
+                # DEBUG: Log Claude's full reasoning
+                # logger.info(f"Quality assessment reasoning: {response.content[0].text}")
+                # logger.info(f"Quality assessment input (first 500 chars): {analysis_result[:500]}")
+                # logger.info(f"Quality assessment result: {first_word}")
+                
                 if first_word not in ["SUCCESS", "FAILED"]:
-                    logger.warning(f"Unexpected quality assessment result: {first_word} - defaulting to SUCCESS")
-                    return "SUCCESS"
-
-                logger.info(f"Quality assessment (API): {first_word}")
+                    # logger.warning(f"Unexpected quality assessment result: {first_word}")
+                    return "SUCCESS"  # Default to SUCCESS for unexpected responses
+                
                 return first_word
-
+                
         except asyncio.TimeoutError:
-            logger.warning("Quality assessment timed out after 15 seconds - defaulting to SUCCESS")
-            return "SUCCESS"
+            # logger.warning("Quality assessment timed out after 15 seconds - defaulting to SUCCESS")
+            return "SUCCESS"  # Don't fail main analysis due to quality check timeout
         except Exception as e:
-            logger.warning(f"Quality assessment failed: {e} - defaulting to SUCCESS")
-            return "SUCCESS"
+            # logger.warning(f"Quality assessment failed: {e} - defaulting to SUCCESS")
+            return "SUCCESS"  # Don't fail main analysis due to quality check errors
     
     async def ensure_format_consistency(self, combined_result: str, request_data: Any) -> str:
         """Ensure consistent formatting across all chunks with timeout protection"""
