@@ -65,7 +65,7 @@ class ClaudeService:
             start_time = time.time()
             
             # Add timeout protection to main API calls
-            async with asyncio.timeout(120):  # 2-minute timeout for main analysis
+            async with asyncio.timeout(300):  # 5-minute timeout for main analysis (increased for large content)
                 # Use streaming for long requests to avoid 10-minute limit
                 if request_data.max_tokens > 20000:  # Use streaming for large responses
                     logger.info("Using streaming for large response")
